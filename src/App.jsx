@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Shield, Corona, Moon, Sun, Bell, ShoppingCart, User, LogOut, MessageSquare,
   Send, Plus, ThumbsUp, Star, Trash2, Pin, VolumeX, Ban, UserCheck, ShieldAlert,
-  Search, ExternalLink, Image, Video, Paperclip, Smile, Check, X, Tag, RefreshCw,
+  Search, ExternalLink, Image as ImageIcon, Video, Paperclip, Smile, Check, X, Tag, RefreshCw,
   ShoppingBag, Lock, UserX, AlertTriangle, ChevronRight, Award, MessageCircle, Mail,
-  DollarSign, Package, CheckCircle2
+  DollarSign, Package, CheckCircle2, Crown, Users, Settings, Activity, Camera,
+  Edit3, Globe, Github, Twitter, Linkedin, Briefcase, MapPin, Calendar, Heart, Eye
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
@@ -12,19 +13,26 @@ const AVATAR_COLORS = [
   '#3b82f6', '#10b981', '#ec4899', '#8b5cf6'
 ];
 
-// Base de datos limpia con la contraseña exacta para la cuenta maestra
 const INITIAL_USERS = [
   { 
     id: 'ext3-id', 
     email: 'ext3@elraizer.com', 
     username: 'EXT3', 
     password: 'Elraizer5374e*', 
-    bio: 'Cuenta maestra · Fundador de Elraizer Community', 
+    fullName: 'Luis Ernesto Matos',
+    headline: 'Fundador & Desarrollador Principal',
+    bio: 'Apasionado por la tecnología, el desarrollo web a medida, automatización y arquitecturas de e-commerce.', 
+    location: 'Armenia, Colombia',
+    website: 'https://elraizer.com',
+    github: 'EXT3-Dev',
+    twitter: '@EXT3_Official',
+    avatar_url: '',
+    banner_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80',
     avatar_color: '#ffb020', 
     role: 'admin', 
     chat_role: 'master', 
     points: 1250, 
-    points_given: 0, 
+    joinedDate: 'Octubre 2024',
     suspended: false 
   }
 ];
@@ -70,7 +78,7 @@ export default function App() {
 
   // Auth states
   const [authTab, setAuthTab] = useState('login');
-  const [identifier, setIdentifier] = useState(''); // Puede ser usuario o correo
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
@@ -107,18 +115,19 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Navigation states
+  // Navigation & Modals
   const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
   const [showCartModal, setShowCartModal] = useState(false);
   const [showSellModal, setShowSellModal] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
   // Inputs
   const [newPostText, setNewPostText] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
 
   // Form Venta Producto
   const [prodTitle, setProdTitle] = useState('');
@@ -126,6 +135,20 @@ export default function App() {
   const [prodCategory, setProdCategory] = useState('Digital');
   const [prodDesc, setProdDesc] = useState('');
   const [prodImage, setProdImage] = useState('');
+
+  // Profile Edit State
+  const [editFullName, setEditFullName] = useState('');
+  const [editHeadline, setEditHeadline] = useState('');
+  const [editBio, setEditBio] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editWebsite, setEditWebsite] = useState('');
+  const [editGithub, setEditGithub] = useState('');
+  const [editTwitter, setEditTwitter] = useState('');
+  const [editAvatarUrl, setEditAvatarUrl] = useState('');
+  const [editBannerUrl, setEditBannerUrl] = useState('');
+
+  const avatarInputRef = useRef(null);
+  const bannerInputRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('elraizer_users', JSON.stringify(users));
@@ -151,13 +174,26 @@ export default function App() {
     localStorage.setItem('elraizer_dms', JSON.stringify(directMessages));
   }, [directMessages]);
 
+  useEffect(() => {
+    if (currentUser) {
+      setEditFullName(currentUser.fullName || '');
+      setEditHeadline(currentUser.headline || '');
+      setEditBio(currentUser.bio || '');
+      setEditLocation(currentUser.location || '');
+      setEditWebsite(currentUser.website || '');
+      setEditGithub(currentUser.github || '');
+      setEditTwitter(currentUser.twitter || '');
+      setEditAvatarUrl(currentUser.avatar_url || '');
+      setEditBannerUrl(currentUser.banner_url || '');
+    }
+  }, [currentUser]);
+
   const handleLogin = (e) => {
     e.preventDefault();
     setAuthError('');
 
     const inputClean = identifier.trim().toLowerCase();
 
-    // Buscar coincidencia por correo O por nombre de usuario
     const found = users.find(u => 
       u.email.toLowerCase() === inputClean || 
       u.username.toLowerCase() === inputClean
@@ -169,7 +205,6 @@ export default function App() {
         return;
       }
       
-      // Validar contraseña
       if (found.password && found.password !== password) {
         setAuthError('La contraseña ingresada es incorrecta.');
         return;
@@ -192,7 +227,6 @@ export default function App() {
 
     const inputClean = identifier.trim().toLowerCase();
 
-    // Bloquear registro si intenta usar credenciales reservadas de la cuenta maestra
     if (inputClean === 'ext3' || inputClean === 'ext3@elraizer.com') {
       setAuthError('Este usuario / correo está reservado para la cuenta maestra.');
       return;
@@ -209,22 +243,94 @@ export default function App() {
     }
 
     const isEmail = inputClean.includes('@');
+    const uname = isEmail ? inputClean.split('@')[0] : identifier.trim();
     const newUser = {
       id: 'usr_' + Date.now(),
       email: isEmail ? inputClean : `${inputClean}@elraizer.com`,
-      username: isEmail ? inputClean.split('@')[0] : identifier.trim(),
+      username: uname,
       password: password,
+      fullName: uname,
+      headline: 'Nuevo Miembro de Elraizer',
+      bio: '¡Hola! Recientemente me he unido a Elraizer Community.',
+      location: 'Colombia',
+      website: '',
+      github: '',
+      twitter: '',
+      avatar_url: '',
+      banner_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80',
       avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-      bio: 'Miembro de Elraizer Community 🚀',
       role: 'user',
       chat_role: 'nuevo',
       points: 0,
-      points_given: 0,
+      joinedDate: 'Reciente',
       suspended: false
     };
 
     setUsers([...users, newUser]);
     setCurrentUser(newUser);
+  };
+
+  const handleSaveProfile = (e) => {
+    e.preventDefault();
+    const updatedUser = {
+      ...currentUser,
+      fullName: editFullName,
+      headline: editHeadline,
+      bio: editBio,
+      location: editLocation,
+      website: editWebsite,
+      github: editGithub,
+      twitter: editTwitter,
+      avatar_url: editAvatarUrl,
+      banner_url: editBannerUrl
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers(users.map(u => u.id === currentUser.id ? updatedUser : u));
+    setIsEditingProfile(false);
+  };
+
+  const handleImageUpload = (e, type) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (type === 'avatar') {
+          setEditAvatarUrl(reader.result);
+        } else if (type === 'banner') {
+          setEditBannerUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const toggleUserRole = (userId) => {
+    setUsers(users.map(u => {
+      if (u.id === userId && u.id !== 'ext3-id') {
+        const newRole = u.role === 'admin' ? 'user' : 'admin';
+        const newChatRole = newRole === 'admin' ? 'moderador' : 'miembro';
+        return { ...u, role: newRole, chat_role: newChatRole };
+      }
+      return u;
+    }));
+  };
+
+  const toggleUserSuspend = (userId) => {
+    if (userId === 'ext3-id') return;
+    setUsers(users.map(u => u.id === userId ? { ...u, suspended: !u.suspended } : u));
+  };
+
+  const givePoints = (userId, amount) => {
+    setUsers(users.map(u => u.id === userId ? { ...u, points: u.points + amount } : u));
+  };
+
+  const deletePost = (postId) => {
+    setPosts(posts.filter(p => p.id !== postId));
+  };
+
+  const deleteProduct = (prodId) => {
+    setProducts(products.filter(p => p.id !== prodId));
   };
 
   const addToCart = (product) => {
@@ -386,6 +492,9 @@ export default function App() {
     );
   }
 
+  const myPostsCount = posts.filter(p => p.author_id === currentUser.id).length;
+  const myProductsCount = products.filter(p => p.seller_id === currentUser.id).length;
+
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#0e1116] text-[#e9eef5]' : 'bg-[#f4f6fb] text-[#0f172a]'}`}>
       <header className="sticky top-0 z-40 bg-[#161b23]/90 backdrop-blur-md border-b border-[#2a323d] px-4 py-3 flex items-center justify-between">
@@ -407,8 +516,12 @@ export default function App() {
           </button>
 
           {currentUser?.role === 'admin' && (
-            <button onClick={() => setShowAdminPanel(!showAdminPanel)} className="p-2 bg-[#ffb020]/20 text-[#ffb020] rounded-xl border border-[#ffb020]/40 font-semibold text-xs flex items-center gap-1">
-              👑 Panel Maestro
+            <button 
+              onClick={() => setShowAdminModal(true)} 
+              className="p-2 bg-[#ffb020]/20 text-[#ffb020] hover:bg-[#ffb020]/30 rounded-xl border border-[#ffb020]/40 font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md"
+            >
+              <Crown size={16} />
+              <span>Panel Maestro</span>
             </button>
           )}
           <button onClick={toggleTheme} className="p-2 bg-[#1d242e] rounded-xl border border-[#2a323d]">
@@ -441,7 +554,7 @@ export default function App() {
               />
               <div className="flex justify-between items-center">
                 <div className="flex gap-2 text-[#8b97a8]">
-                  <button className="p-2 hover:bg-[#1d242e] rounded-lg"><Image size={18} /></button>
+                  <button className="p-2 hover:bg-[#1d242e] rounded-lg"><ImageIcon size={18} /></button>
                   <button className="p-2 hover:bg-[#1d242e] rounded-lg"><Video size={18} /></button>
                   <button className="p-2 hover:bg-[#1d242e] rounded-lg"><Paperclip size={18} /></button>
                 </div>
@@ -473,9 +586,13 @@ export default function App() {
               <div key={p.id} className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: p.author_color }}>
-                      {p.author_name[0]}
-                    </div>
+                    {currentUser.avatar_url ? (
+                      <img src={currentUser.avatar_url} alt={p.author_name} className="w-9 h-9 rounded-full object-cover border border-[#7c5cff]/30" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: p.author_color }}>
+                        {p.author_name[0]}
+                      </div>
+                    )}
                     <div>
                       <div className="font-semibold text-sm flex items-center gap-1">
                         {p.author_name} <span className="text-[10px] bg-[#2a323d] px-2 py-0.5 rounded-full text-[#8b97a8]">{p.author_chat_role}</span>
@@ -483,6 +600,14 @@ export default function App() {
                       <div className="text-xs text-[#8b97a8]">{p.created_at}</div>
                     </div>
                   </div>
+                  {currentUser.role === 'admin' && (
+                    <button 
+                      onClick={() => deletePost(p.id)}
+                      className="p-1.5 text-[#ff5470] hover:bg-[#ff5470]/10 rounded-lg transition-all text-xs flex items-center gap-1"
+                    >
+                      <Trash2 size={14} /> Eliminar
+                    </button>
+                  )}
                 </div>
                 <p className="text-sm leading-relaxed">{p.text}</p>
                 <div className="flex items-center gap-4 text-xs text-[#8b97a8] pt-2 border-t border-[#2a323d]">
@@ -497,7 +622,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MARKETPLACE & VENTAS DE PRODUCTOS */}
+        {/* TAB MARKETPLACE */}
         {activeTab === 'marketplace' && (
           <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -524,6 +649,14 @@ export default function App() {
                       <span className="absolute top-3 right-3 bg-[#161b23]/80 backdrop-blur-md text-[#00d4b1] border border-[#00d4b1]/30 text-[10px] font-bold px-2.5 py-1 rounded-full">
                         {prod.category}
                       </span>
+                      {currentUser.role === 'admin' && (
+                        <button 
+                          onClick={() => deleteProduct(prod.id)}
+                          className="absolute top-3 left-3 bg-[#ff5470] text-white p-1.5 rounded-xl text-xs hover:opacity-90 transition-all"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                     <div className="p-4 space-y-2">
                       <div className="flex items-center gap-2 text-xs text-[#8b97a8]">
@@ -595,12 +728,16 @@ export default function App() {
                   onClick={() => setActiveDmUser(u)}
                   className={`w-full text-left p-3 rounded-xl border flex items-center gap-3 transition-all ${activeDmUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] hover:bg-[#2a323d]'}`}
                 >
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: u.avatar_color }}>
-                    {u.username[0]}
-                  </div>
+                  {u.avatar_url ? (
+                    <img src={u.avatar_url} alt={u.username} className="w-8 h-8 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: u.avatar_color }}>
+                      {u.username[0]}
+                    </div>
+                  )}
                   <div className="truncate">
                     <div className="font-semibold text-xs">{u.username}</div>
-                    <div className="text-[10px] text-[#8b97a8] truncate">{u.bio}</div>
+                    <div className="text-[10px] text-[#8b97a8] truncate">{u.headline || u.bio}</div>
                   </div>
                 </button>
               ))}
@@ -610,9 +747,13 @@ export default function App() {
               {activeDmUser ? (
                 <>
                   <div className="p-3 border-b border-[#2a323d] font-semibold text-sm flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]" style={{ backgroundColor: activeDmUser.avatar_color }}>
-                      {activeDmUser.username[0]}
-                    </div>
+                    {activeDmUser.avatar_url ? (
+                      <img src={activeDmUser.avatar_url} alt={activeDmUser.username} className="w-6 h-6 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]" style={{ backgroundColor: activeDmUser.avatar_color }}>
+                        {activeDmUser.username[0]}
+                      </div>
+                    )}
                     <span>Chat Privado con {activeDmUser.username}</span>
                   </div>
                   <div className="flex-1 p-4 overflow-y-auto space-y-3">
@@ -646,28 +787,361 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB PERFIL */}
+        {/* TAB PERFIL PROFESIONAL FUNCIONAL */}
         {activeTab === 'profile' && (
-          <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-xl space-y-6">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl" style={{ backgroundColor: currentUser.avatar_color }}>
-                {currentUser.username[0]}
+          <div className="space-y-6">
+            <div className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden shadow-2xl relative">
+              {/* BANNER PORTADA */}
+              <div className="h-48 w-full relative bg-[#1d242e]">
+                <img 
+                  src={currentUser.banner_url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80'} 
+                  alt="Portada" 
+                  className="w-full h-full object-cover" 
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#161b23] via-transparent to-transparent"></div>
               </div>
-              <div>
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  {currentUser.username}
-                  {currentUser.chat_role === 'master' && '👑'}
-                </h2>
-                <p className="text-sm text-[#8b97a8]">{currentUser.bio}</p>
-                <div className="mt-2 flex gap-2">
-                  <span className="text-xs bg-[#7c5cff]/20 text-[#a78bfa] px-2 py-1 rounded-md border border-[#7c5cff]/30">Rol: {currentUser.chat_role}</span>
-                  <span className="text-xs bg-[#00d4b1]/20 text-[#00d4b1] px-2 py-1 rounded-md border border-[#00d4b1]/30">Puntos: {currentUser.points}</span>
+
+              {/* DETALLES DE PERFIL */}
+              <div className="px-6 pb-6 relative">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between -mt-16 mb-4 gap-4">
+                  {/* FOTO DE PERFIL / AVATAR */}
+                  <div className="relative group">
+                    <div className="w-28 h-28 rounded-2xl border-4 border-[#161b23] overflow-hidden shadow-2xl flex items-center justify-center bg-[#1d242e]">
+                      {currentUser.avatar_url ? (
+                        <img src={currentUser.avatar_url} alt={currentUser.username} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center font-bold text-4xl text-white" style={{ backgroundColor: currentUser.avatar_color }}>
+                          {currentUser.username[0]}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setIsEditingProfile(true)}
+                      className="px-4 py-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-lg transition-all"
+                    >
+                      <Edit3 size={16} /> Editar Perfil Profesional
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                      {currentUser.fullName || currentUser.username}
+                      {currentUser.chat_role === 'master' && <Crown size={20} className="text-[#ffb020]" />}
+                    </h1>
+                    <p className="text-sm text-[#7c5cff] font-medium">{currentUser.headline || 'Miembro de Elraizer'}</p>
+                    <p className="text-xs text-[#8b97a8] mt-0.5">@{currentUser.username} · {currentUser.email}</p>
+                  </div>
+
+                  <p className="text-xs leading-relaxed text-[#e9eef5] max-w-2xl bg-[#1d242e]/50 p-3 rounded-xl border border-[#2a323d]/50">
+                    {currentUser.bio || 'Sin descripción aún.'}
+                  </p>
+
+                  {/* METADATOS Y REDES */}
+                  <div className="flex flex-wrap gap-4 text-xs text-[#8b97a8] pt-2 border-t border-[#2a323d]">
+                    {currentUser.location && (
+                      <span className="flex items-center gap-1"><MapPin size={14} className="text-[#00d4b1]" /> {currentUser.location}</span>
+                    )}
+                    {currentUser.website && (
+                      <a href={currentUser.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-[#7c5cff]"><Globe size={14} className="text-[#7c5cff]" /> Sitio Web</a>
+                    )}
+                    {currentUser.github && (
+                      <span className="flex items-center gap-1"><Github size={14} /> {currentUser.github}</span>
+                    )}
+                    {currentUser.twitter && (
+                      <span className="flex items-center gap-1"><Twitter size={14} className="text-sky-400" /> {currentUser.twitter}</span>
+                    )}
+                    <span className="flex items-center gap-1"><Calendar size={14} /> Unido en {currentUser.joinedDate || '2024'}</span>
+                  </div>
+                </div>
+
+                {/* METRICAS Y ESTADISTICAS */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+                  <div className="bg-[#1d242e] p-3 rounded-xl border border-[#2a323d] text-center">
+                    <div className="text-lg font-bold text-[#00d4b1]">{currentUser.points}</div>
+                    <div className="text-[10px] text-[#8b97a8] uppercase font-bold">Puntos Reputación</div>
+                  </div>
+                  <div className="bg-[#1d242e] p-3 rounded-xl border border-[#2a323d] text-center">
+                    <div className="text-lg font-bold text-[#7c5cff]">{myPostsCount}</div>
+                    <div className="text-[10px] text-[#8b97a8] uppercase font-bold">Publicaciones</div>
+                  </div>
+                  <div className="bg-[#1d242e] p-3 rounded-xl border border-[#2a323d] text-center">
+                    <div className="text-lg font-bold text-[#ffb020]">{myProductsCount}</div>
+                    <div className="text-[10px] text-[#8b97a8] uppercase font-bold">Productos Venta</div>
+                  </div>
+                  <div className="bg-[#1d242e] p-3 rounded-xl border border-[#2a323d] text-center">
+                    <div className="text-lg font-bold text-sky-400">{currentUser.role === 'admin' ? 'Administrador' : 'Miembro'}</div>
+                    <div className="text-[10px] text-[#8b97a8] uppercase font-bold">Rango Actual</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
       </main>
+
+      {/* MODAL EDITAR PERFIL PROFESIONAL */}
+      {isEditingProfile && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#161b23] border border-[#2a323d] text-[#e9eef5] rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl relative max-h-[90vh] flex flex-col">
+            <button
+              onClick={() => setIsEditingProfile(false)}
+              className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-2 border-b border-[#2a323d] pb-3">
+              <Edit3 size={22} className="text-[#7c5cff]" />
+              <h3 className="text-lg font-bold">Editar Perfil Profesional</h3>
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="overflow-y-auto flex-1 space-y-4 pr-1">
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold uppercase text-[#7c5cff] tracking-wider">Imágenes de Perfil y Portada</h4>
+                
+                <div>
+                  <label className="text-xs text-[#8b97a8] block mb-1">URL Foto de Perfil / Avatar</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={editAvatarUrl}
+                      onChange={(e) => setEditAvatarUrl(e.target.value)}
+                      className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                      placeholder="https://ejemplo.com/mi-foto.jpg"
+                    />
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      ref={avatarInputRef} 
+                      onChange={(e) => handleImageUpload(e, 'avatar')} 
+                      className="hidden" 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => avatarInputRef.current.click()}
+                      className="px-3 py-2 bg-[#2a323d] hover:bg-[#3a4454] text-xs font-semibold rounded-xl flex items-center gap-1"
+                    >
+                      <Camera size={14} /> Cargar
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-[#8b97a8] block mb-1">URL Foto de Portada / Banner</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={editBannerUrl}
+                      onChange={(e) => setEditBannerUrl(e.target.value)}
+                      className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                      placeholder="https://ejemplo.com/mi-portada.jpg"
+                    />
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      ref={bannerInputRef} 
+                      onChange={(e) => handleImageUpload(e, 'banner')} 
+                      className="hidden" 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => bannerInputRef.current.click()}
+                      className="px-3 py-2 bg-[#2a323d] hover:bg-[#3a4454] text-xs font-semibold rounded-xl flex items-center gap-1"
+                    >
+                      <Camera size={14} /> Cargar
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-[#2a323d]">
+                <h4 className="text-xs font-bold uppercase text-[#7c5cff] tracking-wider">Información Personal & Profesional</h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-[#8b97a8] block mb-1">Nombre Completo</label>
+                    <input
+                      type="text"
+                      value={editFullName}
+                      onChange={(e) => setEditFullName(e.target.value)}
+                      className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                      placeholder="Luis Ernesto Matos"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#8b97a8] block mb-1">Titular Profesional</label>
+                    <input
+                      type="text"
+                      value={editHeadline}
+                      onChange={(e) => setEditHeadline(e.target.value)}
+                      className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                      placeholder="Desarrollador Web / Especialista Soporte"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-[#8b97a8] block mb-1">Ubicación</label>
+                  <input
+                    type="text"
+                    value={editLocation}
+                    onChange={(e) => setEditLocation(e.target.value)}
+                    className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                    placeholder="Armenia, Quindío, Colombia"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-[#8b97a8] block mb-1">Biografía / Descripción Profesional</label>
+                  <textarea
+                    value={editBio}
+                    onChange={(e) => setEditBio(e.target.value)}
+                    rows="3"
+                    className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff] resize-none"
+                    placeholder="Describe tu experiencia, habilidades e intereses principales..."
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-[#2a323d]">
+                <h4 className="text-xs font-bold uppercase text-[#7c5cff] tracking-wider">Enlaces y Redes Sociales</h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-[#8b97a8] block mb-1">Sitio Web</label>
+                    <input
+                      type="text"
+                      value={editWebsite}
+                      onChange={(e) => setEditWebsite(e.target.value)}
+                      className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                      placeholder="https://misitio.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#8b97a8] block mb-1">GitHub</label>
+                    <input
+                      type="text"
+                      value={editGithub}
+                      onChange={(e) => setEditGithub(e.target.value)}
+                      className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                      placeholder="usuario"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#8b97a8] block mb-1">Twitter / X</label>
+                    <input
+                      type="text"
+                      value={editTwitter}
+                      onChange={(e) => setEditTwitter(e.target.value)}
+                      className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                      placeholder="@usuario"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] text-white font-bold py-3 rounded-xl text-xs hover:opacity-95 transition-all shadow-lg mt-2"
+              >
+                Guardar Cambios de Perfil
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PANEL MAESTRO / ADMINISTRACIÓN */}
+      {showAdminModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#161b23] border border-[#ffb020]/40 text-[#e9eef5] rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl relative max-h-[85vh] flex flex-col">
+            <button
+              onClick={() => setShowAdminModal(false)}
+              className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-[#2a323d] pb-4">
+              <div className="p-2 bg-[#ffb020]/20 border border-[#ffb020]/40 rounded-xl text-[#ffb020]">
+                <Crown size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  Panel Maestro de Administración
+                </h3>
+                <p className="text-xs text-[#8b97a8]">Gestión total de usuarios, roles, reputación y moderación de contenido.</p>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 space-y-4 pr-1">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-[#1d242e] p-3 rounded-xl border border-[#2a323d] text-center">
+                  <div className="text-xl font-bold text-[#00d4b1]">{users.length}</div>
+                  <div className="text-[10px] text-[#8b97a8] uppercase font-bold">Usuarios</div>
+                </div>
+                <div className="bg-[#1d242e] p-3 rounded-xl border border-[#2a323d] text-center">
+                  <div className="text-xl font-bold text-[#7c5cff]">{posts.length}</div>
+                  <div className="text-[10px] text-[#8b97a8] uppercase font-bold">Publicaciones</div>
+                </div>
+                <div className="bg-[#1d242e] p-3 rounded-xl border border-[#2a323d] text-center">
+                  <div className="text-xl font-bold text-[#ffb020]">{products.length}</div>
+                  <div className="text-[10px] text-[#8b97a8] uppercase font-bold">Productos</div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold uppercase text-[#8b97a8] tracking-wider">Gestión de Usuarios Registrados</h4>
+                {users.map(u => (
+                  <div key={u.id} className="bg-[#1d242e] p-3 rounded-xl border border-[#2a323d] flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: u.avatar_color }}>
+                        {u.username[0]}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-xs text-white flex items-center gap-1.5">
+                          {u.username}
+                          {u.id === 'ext3-id' && <span className="bg-[#ffb020]/20 text-[#ffb020] border border-[#ffb020]/30 text-[9px] px-1.5 py-0.2 rounded-full">FUNDADOR</span>}
+                          {u.suspended && <span className="bg-[#ff5470]/20 text-[#ff5470] border border-[#ff5470]/30 text-[9px] px-1.5 py-0.2 rounded-full">SUSPENDIDO</span>}
+                        </div>
+                        <div className="text-[10px] text-[#8b97a8]">{u.email} · {u.points} pts</div>
+                      </div>
+                    </div>
+
+                    {u.id !== 'ext3-id' && (
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        <button
+                          onClick={() => givePoints(u.id, 100)}
+                          className="px-2.5 py-1 bg-[#00d4b1]/10 border border-[#00d4b1]/30 text-[#00d4b1] hover:bg-[#00d4b1]/20 rounded-lg text-[11px] font-semibold transition-all"
+                        >
+                          +100 Pts
+                        </button>
+                        <button
+                          onClick={() => toggleUserRole(u.id)}
+                          className={`px-2.5 py-1 border rounded-lg text-[11px] font-semibold transition-all ${u.role === 'admin' ? 'bg-[#7c5cff]/20 border-[#7c5cff]/40 text-[#a78bfa]' : 'bg-[#2a323d] border-[#3a4454] text-[#8b97a8]'}`}
+                        >
+                          {u.role === 'admin' ? 'Admin' : 'Hacer Admin'}
+                        </button>
+                        <button
+                          onClick={() => toggleUserSuspend(u.id)}
+                          className={`px-2.5 py-1 border rounded-lg text-[11px] font-semibold transition-all ${u.suspended ? 'bg-[#10b981]/20 border-[#10b981]/40 text-[#10b981]' : 'bg-[#ff5470]/20 border-[#ff5470]/40 text-[#ff5470]'}`}
+                        >
+                          {u.suspended ? 'Activar' : 'Suspender'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL CARRITO DE COMPRAS */}
       {showCartModal && (
@@ -731,7 +1205,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL PUBLICAR PRODUCTO/SERVICIO EN EL MARKETPLACE */}
+      {/* MODAL PUBLICAR PRODUCTO EN MARKETPLACE */}
       {showSellModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-[#161b23] border border-[#2a323d] text-[#e9eef5] rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
