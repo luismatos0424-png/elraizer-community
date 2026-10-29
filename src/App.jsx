@@ -7,13 +7,22 @@ import {
   DollarSign, Package, CheckCircle2, Crown, Users, Settings, Activity, Camera,
   Edit3, Globe, Github, Twitter, Linkedin, Briefcase, MapPin, Calendar, Heart, Eye,
   Archive, Inbox, Send as SendIcon, FileText, CheckCheck, UserMinus, ShieldOff, Layers, Filter,
-  Wifi, Circle
+  Wifi, Circle, Award as AwardIcon, Gift
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
   '#7c5cff', '#00d4b1', '#ff5470', '#ffb020',
   '#3b82f6', '#10b981', '#ec4899', '#8b5cf6'
 ];
+
+// RANGOS Y LIMITES DIARIOS DE PUNTOS SEGUN CATEGORIA/RANGO
+const RANK_POINTS_LIMITS = {
+  master: 500,     // Administrador/Maestro
+  moderador: 200,  // Moderadores
+  veterano: 100,   // Usuarios veteranos
+  miembro: 50,     // Usuarios estándar
+  nuevo: 20        // Nuevos registrados
+};
 
 const INITIAL_USERS = [
   { 
@@ -34,6 +43,7 @@ const INITIAL_USERS = [
     role: 'admin', 
     chat_role: 'master', 
     points: 1250, 
+    dailyPointsGiven: 0,
     joinedDate: 'Octubre 2024',
     status: 'active',
     isOnline: true
@@ -56,6 +66,7 @@ const INITIAL_USERS = [
     role: 'user', 
     chat_role: 'miembro', 
     points: 120, 
+    dailyPointsGiven: 0,
     joinedDate: 'Enero 2025',
     status: 'active',
     isOnline: true
@@ -78,6 +89,7 @@ const INITIAL_USERS = [
     role: 'user', 
     chat_role: 'miembro', 
     points: 340, 
+    dailyPointsGiven: 0,
     joinedDate: 'Febrero 2025',
     status: 'active',
     isOnline: false
@@ -91,7 +103,7 @@ const INITIAL_POSTS = [
     author_name: 'EXT3', 
     author_color: '#ffb020', 
     author_chat_role: 'master', 
-    text: '¡Bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y envía mensajes privados.', 
+    text: '¡Bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y otorga puntos a los posts que más te gusten.', 
     tags: ['bienvenida', 'comunidad', 'anuncio'], 
     attachments: [], 
     votes: 42, 
@@ -175,10 +187,16 @@ export default function App() {
     ];
   });
 
+  // Lista de IDs de usuarios con conversaciones fijadas (Pinned)
+  const [pinnedUserIds, setPinnedUserIds] = useState(() => {
+    const saved = localStorage.getItem('elraizer_pinned_dms');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Navigation
   const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
-  const [dmFolder, setDmFolder] = useState('inbox'); // inbox, sent
+  const [dmFolder, setDmFolder] = useState('inbox');
   const [dmSearchQuery, setDmSearchQuery] = useState('');
 
   // Modals
@@ -187,6 +205,11 @@ export default function App() {
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [selectedAdminUser, setSelectedAdminUser] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+
+  // Modal para Otorgar Puntos Personalizados
+  const [pointsModalPost, setPointsModalPost] = useState(null);
+  const [pointsToGiveInput, setPointsToGiveInput] = useState('');
+  const [pointsError, setPointsError] = useState('');
 
   // New Post Inputs & File Attachments
   const [newPostText, setNewPostText] = useState('');
@@ -197,13 +220,6 @@ export default function App() {
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
 
-  // Form Venta
-  const [prodTitle, setProdTitle] = useState('');
-  const [prodPrice, setProdPrice] = useState('');
-  const [prodCategory, setProdCategory] = useState('Digital');
-  const [prodDesc, setProdDesc] = useState('');
-  const [prodImage, setProdImage] = useState('');
-
   // Profile Edit State
   const [editFullName, setEditFullName] = useState('');
   const [editHeadline, setEditHeadline] = useState('');
@@ -212,10 +228,6 @@ export default function App() {
   const [editWebsite, setEditWebsite] = useState('');
   const [editGithub, setEditGithub] = useState('');
   const [editTwitter, setEditTwitter] = useState('');
-  const [editAvatarUrl, setEditAvatarUrl] = useState('');
-  const [editBannerUrl, setEditBannerUrl] = useState('');
-
-  const avatarInputRef = useRef(null);
 
   // Sync LocalStorage
   useEffect(() => { localStorage.setItem('elraizer_users', JSON.stringify(users)); }, [users]);
@@ -224,6 +236,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem('elraizer_cart', JSON.stringify(cart)); }, [cart]);
   useEffect(() => { localStorage.setItem('elraizer_chat', JSON.stringify(chatMessages)); }, [chatMessages]);
   useEffect(() => { localStorage.setItem('elraizer_dms', JSON.stringify(directMessages)); }, [directMessages]);
+  useEffect(() => { localStorage.setItem('elraizer_pinned_dms', JSON.stringify(pinnedUserIds)); }, [pinnedUserIds]);
 
   useEffect(() => {
     if (currentUser) {
@@ -234,19 +247,82 @@ export default function App() {
       setEditWebsite(currentUser.website || '');
       setEditGithub(currentUser.github || '');
       setEditTwitter(currentUser.twitter || '');
-      setEditAvatarUrl(currentUser.avatar_url || '');
-      setEditBannerUrl(currentUser.banner_url || '');
     }
   }, [currentUser]);
 
   // Online status helper
   const onlineUsers = users.filter(u => u.isOnline);
 
+  // Rango / Categoria límite de puntos del usuario actual
+  const userRoleKey = currentUser?.chat_role || 'miembro';
+  const maxDailyPoints = RANK_POINTS_LIMITS[userRoleKey] || 50;
+  const currentGiven = currentUser?.dailyPointsGiven || 0;
+  const remainingDailyPoints = Math.max(0, maxDailyPoints - currentGiven);
+
+  // Toggle fijar conversación
+  const togglePinConversation = (targetUserId, e) => {
+    e.stopPropagation();
+    if (pinnedUserIds.includes(targetUserId)) {
+      setPinnedUserIds(pinnedUserIds.filter(id => id !== targetUserId));
+    } else {
+      setPinnedUserIds([...pinnedUserIds, targetUserId]);
+    }
+  };
+
+  // Otorgar Puntos con validación estricta de límites diarios y saldo
+  const handleGivePointsSubmit = (e) => {
+    e.preventDefault();
+    setPointsError('');
+
+    const pointsNum = parseInt(pointsToGiveInput, 10);
+    if (isNaN(pointsNum) || pointsNum <= 0) {
+      setPointsError('Ingresa un número de puntos válido mayor a 0.');
+      return;
+    }
+
+    if (pointsNum > remainingDailyPoints) {
+      setPointsError(`Excedes tu límite diario restante. Solo puedes dar hasta ${remainingDailyPoints} puntos hoy.`);
+      return;
+    }
+
+    if (pointsNum > currentUser.points && currentUser.chat_role !== 'master') {
+      setPointsError(`No tienes suficientes puntos disponibles (${currentUser.points} Pts).`);
+      return;
+    }
+
+    // 1. Actualizar Post
+    setPosts(posts.map(p => p.id === pointsModalPost.id ? { ...p, votes: p.votes + pointsNum } : p));
+
+    // 2. Actualizar Usuario Autor del Post (Suma Puntos)
+    setUsers(prevUsers => prevUsers.map(u => {
+      if (u.id === pointsModalPost.author_id) {
+        return { ...u, points: u.points + pointsNum };
+      }
+      if (u.id === currentUser.id) {
+        return {
+          ...u,
+          points: u.chat_role === 'master' ? u.points : u.points - pointsNum,
+          dailyPointsGiven: (u.dailyPointsGiven || 0) + pointsNum
+        };
+      }
+      return u;
+    }));
+
+    // 3. Actualizar currentUser
+    setCurrentUser(prev => ({
+      ...prev,
+      points: prev.chat_role === 'master' ? prev.points : prev.points - pointsNum,
+      dailyPointsGiven: (prev.dailyPointsGiven || 0) + pointsNum
+    }));
+
+    setPointsModalPost(null);
+    setPointsToGiveInput('');
+  };
+
   // Handle Checkout / Direct Message Payment Request
   const handleCheckout = () => {
     if (cart.length === 0 || !currentUser) return;
 
-    // Direct message generated for each distinct seller in cart
     cart.forEach(item => {
       const seller = users.find(u => u.id === item.seller_id) || { id: item.seller_id, username: item.seller_name };
       const autoMessage = `🛒 ¡Hola @${seller.username}! Estoy interesado en comprar tu producto "${item.title}" por $${item.price.toFixed(2)} USD. ¿Cuáles son los métodos de pago disponibles (Transferencia, Crypto, Nequi, Paypal)?`;
@@ -352,7 +428,7 @@ export default function App() {
       location: 'Colombia',
       website: '', github: '', twitter: '', avatar_url: '', banner_url: '',
       avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-      role: 'user', chat_role: 'nuevo', points: 0, joinedDate: 'Reciente', status: 'active', isOnline: true
+      role: 'user', chat_role: 'nuevo', points: 10, dailyPointsGiven: 0, joinedDate: 'Reciente', status: 'active', isOnline: true
     };
 
     setUsers([...users, newUser]);
@@ -383,12 +459,16 @@ export default function App() {
   };
 
   // Clear Conversations / DMs
-  const handleClearChatHistory = (targetUserId) => {
+  const handleClearChatHistory = (targetUserId, e) => {
+    if (e) e.stopPropagation();
     if (window.confirm('¿Deseas vaciar todo el historial de conversaciones con este usuario?')) {
       setDirectMessages(directMessages.filter(dm => 
         !(dm.sender_id === currentUser.id && dm.receiver_id === targetUserId) &&
         !(dm.sender_id === targetUserId && dm.receiver_id === currentUser.id)
       ));
+      if (activeDmUser?.id === targetUserId) {
+        setActiveDmUser(null);
+      }
     }
   };
 
@@ -417,11 +497,17 @@ export default function App() {
     setDmInput('');
   };
 
-  // Filter users by strict username query for DM Panel
+  // Filter users for DM with pinned sorting
   const filteredUsersForDm = users.filter(u => {
     if (u.id === currentUser?.id) return false;
     if (!dmSearchQuery.trim()) return true;
     return u.username.toLowerCase().includes(dmSearchQuery.trim().toLowerCase());
+  }).sort((a, b) => {
+    const aPinned = pinnedUserIds.includes(a.id);
+    const bPinned = pinnedUserIds.includes(b.id);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+    return 0;
   });
 
   if (!currentUser) {
@@ -439,8 +525,9 @@ export default function App() {
             </div>
             {authError && <div className="p-3 bg-[#ff5470]/10 border border-[#ff5470] text-[#ff5470] rounded-xl text-xs">{authError}</div>}
             <form onSubmit={authTab === 'login' ? handleLogin : handleRegister} className="space-y-4">
-              <input type="text" required value={identifier} onChange={(e) => setIdentifier(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-3 text-sm" placeholder="EXT3 o tuemail@ejemplo.com" />
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-3 text-sm" placeholder="••••••••" />
+              {/* PLACEHOLDER SIN EL TEXTO EXT3 */}
+              <input type="text" required value={identifier} onChange={(e) => setIdentifier(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]" placeholder="Ingresa tu email o usuario" />
+              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]" placeholder="••••••••" />
               <button type="submit" className="w-full bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white py-3 rounded-xl font-bold text-sm shadow-lg">{authTab === 'login' ? 'Entrar a Elraizer' : 'Crear mi cuenta'}</button>
             </form>
           </div>
@@ -456,6 +543,13 @@ export default function App() {
           ◈ Elraizer Community
         </div>
         <div className="flex items-center gap-3">
+          {/* PUNTOS RESTANTES DEL USUARIO */}
+          <div className="hidden sm:flex items-center gap-1.5 bg-[#1d242e] border border-[#7c5cff]/40 px-3 py-1.5 rounded-xl text-xs">
+            <AwardIcon size={16} className="text-[#ffb020]" />
+            <span className="font-bold text-white">{currentUser.points} Pts</span>
+            <span className="text-[10px] text-[#8b97a8] ml-1">(Límite hoy: {remainingDailyPoints}/{maxDailyPoints})</span>
+          </div>
+
           <button onClick={() => setShowCartModal(true)} className="relative p-2 bg-[#1d242e] hover:bg-[#2a323d] text-[#e9eef5] rounded-xl border border-[#2a323d] flex items-center gap-2 text-xs font-semibold">
             <ShoppingCart size={18} className="text-[#00d4b1]" />
             <span className="hidden sm:inline">Carrito</span>
@@ -508,7 +602,7 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
-        {/* TAB FEED */}
+        {/* TAB FEED CON BOTÓN PARA DAR CANTIDAD DE PUNTOS DENTRO DEL RECUADRO */}
         {activeTab === 'feed' && (
           <div className="space-y-4">
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
@@ -592,9 +686,14 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-4 text-xs text-[#8b97a8] pt-2 border-t border-[#2a323d]">
-                  <button onClick={() => setPosts(posts.map(post => post.id === p.id ? { ...post, votes: post.votes + 1 } : post))} className="flex items-center gap-1 hover:text-[#7c5cff]">
-                    <ThumbsUp size={14} /> {p.votes} Puntos
+                <div className="flex items-center justify-between text-xs text-[#8b97a8] pt-2 border-t border-[#2a323d]">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-[#ffb020] flex items-center gap-1"><AwardIcon size={14} /> {p.votes} Puntos Acumulados</span>
+                  </div>
+
+                  {/* ABRIR RECUADRO DE PUNTOS */}
+                  <button onClick={() => { setPointsModalPost(p); setPointsToGiveInput(''); setPointsError(''); }} className="px-3 py-1.5 bg-[#ffb020]/20 hover:bg-[#ffb020]/30 text-[#ffb020] border border-[#ffb020]/40 rounded-xl font-bold flex items-center gap-1.5 transition-all">
+                    <Gift size={14} /> Dar Puntos
                   </button>
                 </div>
               </div>
@@ -674,7 +773,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MENSAJERÍA CON BÚSQUEDA POR USUARIO Y VACIADO TOTAL */}
+        {/* TAB MENSAJERÍA CON BOTONES DIRECTOS PARA FIJAR Y ELIMINAR CONVERSACIONES EN LA LISTA */}
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-3 flex flex-col">
@@ -687,42 +786,70 @@ export default function App() {
                 </button>
               </div>
 
-              {/* BÚSQUEDA STRICTA POR USUARIO */}
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-2.5 text-[#8b97a8]" />
                 <input
                   type="text"
                   value={dmSearchQuery}
                   onChange={(e) => setDmSearchQuery(e.target.value)}
-                  placeholder="Buscar por usuario (ej: @EXT3)..."
+                  placeholder="Buscar por usuario (ej: @DevUser)..."
                   className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-[#7c5cff]"
                 />
               </div>
 
               <div className="flex justify-between items-center px-1">
-                <h3 className="text-[10px] font-bold text-[#8b97a8] uppercase">Conversaciones</h3>
+                <h3 className="text-[10px] font-bold text-[#8b97a8] uppercase">Seleccionar Conversación</h3>
                 <button onClick={handleClearAllConversations} className="text-[10px] text-[#ff5470] hover:underline font-bold flex items-center gap-0.5">
                   <Trash2 size={12} /> Vaciar Todo
                 </button>
               </div>
 
+              {/* LISTA DE CONVERSACIONES CON BOTONES PARA FIJAR Y ELIMINAR CADA CONVERSACIÓN */}
               <div className="flex-1 overflow-y-auto space-y-2">
                 {filteredUsersForDm.map(u => {
+                  const isPinned = pinnedUserIds.includes(u.id);
                   const msgsCount = directMessages.filter(m => (m.sender_id === currentUser.id && m.receiver_id === u.id) || (m.sender_id === u.id && m.receiver_id === currentUser.id)).length;
+
                   return (
-                    <button key={u.id} onClick={() => setActiveDmUser(u)} className={`w-full text-left p-2.5 rounded-xl border flex items-center justify-between transition-all ${activeDmUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] hover:bg-[#2a323d]'}`}>
+                    <div
+                      key={u.id}
+                      onClick={() => setActiveDmUser(u)}
+                      className={`w-full p-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer group ${activeDmUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] hover:bg-[#2a323d]'}`}
+                    >
                       <div className="flex items-center gap-2 truncate">
                         <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs relative" style={{ backgroundColor: u.avatar_color }}>
                           {u.username[0]}
                           {u.isOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00d4b1] border-2 border-[#161b23] rounded-full"></span>}
                         </div>
                         <div className="truncate">
-                          <div className="font-semibold text-xs text-white">@{u.username}</div>
+                          <div className="font-semibold text-xs text-white flex items-center gap-1">
+                            @{u.username}
+                            {isPinned && <Pin size={12} className="text-[#ffb020] fill-[#ffb020]" />}
+                          </div>
                           <div className="text-[10px] text-[#8b97a8] truncate">{u.email}</div>
                         </div>
                       </div>
-                      {msgsCount > 0 && <span className="bg-[#7c5cff]/40 text-[#a78bfa] text-[10px] px-2 py-0.5 rounded-full font-bold">{msgsCount}</span>}
-                    </button>
+
+                      <div className="flex items-center gap-1">
+                        {/* BOTÓN FIJAR CONVERSACIÓN */}
+                        <button
+                          onClick={(e) => togglePinConversation(u.id, e)}
+                          title={isPinned ? 'Desfijar conversación' : 'Fijar conversación al inicio'}
+                          className={`p-1.5 rounded-lg transition-colors ${isPinned ? 'text-[#ffb020] bg-[#ffb020]/20' : 'text-[#8b97a8] hover:text-[#ffb020] hover:bg-[#2a323d]'}`}
+                        >
+                          <Pin size={13} className={isPinned ? 'fill-[#ffb020]' : ''} />
+                        </button>
+
+                        {/* BOTÓN ELIMINAR CONVERSACIÓN DIRECTO */}
+                        <button
+                          onClick={(e) => handleClearChatHistory(u.id, e)}
+                          title="Eliminar esta conversación"
+                          className="p-1.5 text-[#ff5470] hover:bg-[#ff5470]/20 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -745,7 +872,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <button onClick={() => handleClearChatHistory(activeDmUser.id)} className="px-2.5 py-1 bg-[#ff5470]/20 text-[#ff5470] border border-[#ff5470]/30 hover:bg-[#ff5470]/30 rounded-lg text-xs font-semibold flex items-center gap-1">
+                    <button onClick={(e) => handleClearChatHistory(activeDmUser.id, e)} className="px-2.5 py-1 bg-[#ff5470]/20 text-[#ff5470] border border-[#ff5470]/30 hover:bg-[#ff5470]/30 rounded-lg text-xs font-semibold flex items-center gap-1">
                       <Trash2 size={14} /> Vaciar Bandeja
                     </button>
                   </div>
@@ -802,6 +929,47 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* RECUADRO / MODAL PARA OTORGAR CANTIDAD PERSONALIZADA DE PUNTOS */}
+      {pointsModalPost && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#161b23] border border-[#ffb020]/50 text-[#e9eef5] rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative">
+            <button onClick={() => setPointsModalPost(null)} className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"><X size={18} /></button>
+
+            <div className="flex items-center gap-2 text-[#ffb020] font-bold text-base border-b border-[#2a323d] pb-3">
+              <Gift size={20} /> Otorgar Puntos al Post
+            </div>
+
+            <div className="text-xs text-[#8b97a8] space-y-1">
+              <p>Autor: <strong className="text-white">@{pointsModalPost.author_name}</strong></p>
+              <p>Tu Rango/Categoría: <strong className="text-[#7c5cff] capitalize">{currentUser.chat_role}</strong></p>
+              <p>Tu Límite Diario: <strong className="text-white">{maxDailyPoints} Pts</strong> (Dado hoy: {currentGiven} Pts)</p>
+              <p>Puntos Disponibles para Dar Hoy: <strong className="text-[#00d4b1]">{remainingDailyPoints} Pts</strong></p>
+            </div>
+
+            {pointsError && <div className="p-2.5 bg-[#ff5470]/10 border border-[#ff5470] text-[#ff5470] rounded-xl text-xs">{pointsError}</div>}
+
+            <form onSubmit={handleGivePointsSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Cantidad de puntos a regalar:</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={remainingDailyPoints}
+                  value={pointsToGiveInput}
+                  onChange={(e) => setPointsToGiveInput(e.target.value)}
+                  placeholder={`Máximo ${remainingDailyPoints}`}
+                  className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#ffb020]"
+                />
+              </div>
+
+              <button type="submit" className="w-full bg-gradient-to-r from-[#ffb020] to-[#f59e0b] text-slate-950 font-bold py-2.5 rounded-xl text-xs shadow-lg">
+                Confirmar y Transferir Puntos
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* PANEL MAESTRO */}
       {showAdminModal && (
@@ -920,7 +1088,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL CARRITO / MÉTODO DE PAGO CON MENSAJE DIRECTO AL VENDEDOR */}
+      {/* MODAL CARRITO */}
       {showCartModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#2a323d] text-[#e9eef5] rounded-2xl max-w-md w-full p-6 space-y-4">
