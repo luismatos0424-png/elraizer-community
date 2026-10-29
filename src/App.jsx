@@ -1,34 +1,40 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Shield, Corona, Moon, Sun, Bell, ShoppingCart, User, LogOut, MessageSquare,
   Send, Plus, ThumbsUp, Star, Trash2, Pin, VolumeX, Ban, UserCheck, ShieldAlert,
   Search, ExternalLink, Image, Video, Paperclip, Smile, Check, X, Tag, RefreshCw,
   ShoppingBag, Lock, UserX, AlertTriangle, ChevronRight, Award, MessageCircle, Mail
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tu-proyecto.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'tu-anon-key';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const AVATAR_COLORS = [
   '#7c5cff', '#00d4b1', '#ff5470', '#ffb020',
   '#3b82f6', '#10b981', '#ec4899', '#8b5cf6'
 ];
 
+const INITIAL_USERS = [
+  { id: 'ext3-id', email: 'ext3@elraizer.com', username: 'EXT3', bio: 'Cuenta maestra · Fundador de Elraizer Community', avatar_color: '#ffb020', role: 'admin', chat_role: 'master', points: 1250, points_given: 0, suspended: false },
+  { id: 'lucia-id', email: 'lucia@elraizer.com', username: 'LuciaDev', bio: 'Fullstack Dev & UI Enthusiast ⚡', avatar_color: '#7c5cff', role: 'user', chat_role: 'moderador', points: 120, points_given: 0, suspended: false },
+  { id: 'marco-id', email: 'marco@elraizer.com', username: 'MarcoPro', bio: 'Gamer & Techie 🎮', avatar_color: '#00d4b1', role: 'user', chat_role: 'nuevo', points: 35, points_given: 0, suspended: false },
+  { id: 'sofia-id', email: 'sofia@elraizer.com', username: 'SofiaDesign', bio: 'UI/UX Designer & Art director 🎨', avatar_color: '#ff5470', role: 'user', chat_role: 'maestro', points: 210, points_given: 0, suspended: false },
+  { id: 'diego-id', email: 'diego@elraizer.com', username: 'DiegoCodes', bio: 'Backend developer & Cloud engineer 🚀', avatar_color: '#3b82f6', role: 'user', chat_role: 'nuevo', points: 15, points_given: 0, suspended: false }
+];
+
+const INITIAL_POSTS = [
+  { id: 'p1', author_id: 'ext3-id', author_name: 'EXT3', author_color: '#ffb020', author_chat_role: 'master', text: '¡Bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y envía mensajes privados.', tags: ['bienvenida', 'comunidad', 'anuncio'], media: [], votes: 42, created_at: 'Hace 2 horas' },
+  { id: 'p2', author_id: 'lucia-id', author_name: 'LuciaDev', author_color: '#7c5cff', author_chat_role: 'moderador', text: 'Acabo de publicar un nuevo recurso de UI kits en el Marketplace. ¡Echadle un vistazo!', tags: ['diseño', 'marketplace'], media: [], votes: 15, created_at: 'Hace 1 hora' }
+];
+
 export default function App() {
   const [theme, setTheme] = useState('dark');
-  const [session, setSession] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [pendingGoogleUser, setPendingGoogleUser] = useState(null);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
-  const [loading, setLoading] = useState(true);
 
-  // Auth form states
-  const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
+  // Auth states
+  const [authTab, setAuthTab] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
 
   // Onboarding states
   const [onboardUsername, setOnboardUsername] = useState('');
@@ -36,187 +42,172 @@ export default function App() {
   const [onboardBio, setOnboardBio] = useState('');
   const [onboardError, setOnboardError] = useState('');
 
-  // Main navigation & features
-  const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'chat' | 'dm' | 'store' | 'cart' | 'notifications' | 'profile'
-  const [users, setUsers] = useState([]);
-  const [posts, setPosts] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [directMessages, setDirectMessages] = useState([]);
+  // App data states
+  const [users, setUsers] = useState(() => {
+    const saved = localStorage.getItem('elraizer_users');
+    return saved ? JSON.parse(saved) : INITIAL_USERS;
+  });
+
+  const [posts, setPosts] = useState(() => {
+    const saved = localStorage.getItem('elraizer_posts');
+    return saved ? JSON.parse(saved) : INITIAL_POSTS;
+  });
+
+  const [chatMessages, setChatMessages] = useState(() => {
+    const saved = localStorage.getItem('elraizer_chat');
+    return saved ? JSON.parse(saved) : [
+      { id: 'm1', user_id: 'ext3-id', user_name: 'EXT3', chat_role: 'master', text: 'Chat global activo. Recuerden mantener el respeto.', created_at: '12:00' }
+    ];
+  });
+
+  const [directMessages, setDirectMessages] = useState(() => {
+    const saved = localStorage.getItem('elraizer_dms');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Navigation states
+  const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
-  const [notifications, setNotifications] = useState([]);
-  const [cart, setCart] = useState([]);
 
   // Inputs
   const [newPostText, setNewPostText] = useState('');
-  const [postMediaFiles, setPostMediaFiles] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
   const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const [showModModal, setShowModModal] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchUserProfile(session.user.id);
-      else setLoading(false);
-    });
+    localStorage.setItem('elraizer_users', JSON.stringify(users));
+  }, [users]);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchUserProfile(session.user.id);
-      else {
-        setCurrentUser(null);
-        setLoading(false);
+  useEffect(() => {
+    localStorage.setItem('elraizer_posts', JSON.stringify(posts));
+  }, [posts]);
+
+  useEffect(() => {
+    localStorage.setItem('elraizer_chat', JSON.stringify(chatMessages));
+  }, [chatMessages]);
+
+  useEffect(() => {
+    localStorage.setItem('elraizer_dms', JSON.stringify(directMessages));
+  }, [directMessages]);
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    setAuthError('');
+    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (found) {
+      if (found.suspended) {
+        setAuthError('Esta cuenta ha sido suspendida por la administración.');
+        return;
       }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchUserProfile = async (userId) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error || !data || !data.username) {
-        setOnboardingRequired(true);
-      } else {
-        setCurrentUser(data);
-        setOnboardingRequired(false);
-        loadAppData();
-        subscribeToRealtime();
-      }
-    } catch (err) {
-      setOnboardingRequired(true);
-    } finally {
-      setLoading(false);
+      setCurrentUser(found);
+    } else {
+      setAuthError('Correo o contraseña incorrectos. Si no tienes cuenta, regístrate.');
     }
   };
 
-  const loadAppData = async () => {
-    const { data: profilesData } = await supabase.from('profiles').select('*');
-    if (profilesData) setUsers(profilesData);
-
-    const { data: postsData } = await supabase.from('posts').select('*, profiles(*)').order('created_at', { ascending: false });
-    if (postsData) setPosts(postsData);
-
-    const { data: productsData } = await supabase.from('products').select('*, profiles(*)').order('created_at', { ascending: false });
-    if (productsData) setProducts(productsData);
-
-    const { data: messagesData } = await supabase.from('messages').select('*, profiles(*)').order('created_at', { ascending: true });
-    if (messagesData) setChatMessages(messagesData);
-
-    const { data: dmData } = await supabase.from('direct_messages').select('*').order('created_at', { ascending: true });
-    if (dmData) setDirectMessages(dmData);
-  };
-
-  const subscribeToRealtime = () => {
-    supabase
-      .channel('public_chat')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-        setChatMessages((prev) => [...prev, payload.new]);
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
-        setDirectMessages((prev) => [...prev, payload.new]);
-      })
-      .subscribe();
-  };
-
-  const handleLogin = async (e) => {
+  const handleRegister = (e) => {
     e.preventDefault();
     setAuthError('');
-    setAuthLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setAuthError(error.message);
-    setAuthLoading(false);
+    if (!email || !password) {
+      setAuthError('Completa todos los campos para registrarte.');
+      return;
+    }
+    const exists = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (exists) {
+      setAuthError('Ya existe una cuenta con este correo electrónico.');
+      return;
+    }
+    setPendingGoogleUser({ email, isGoogle: false });
+    setOnboardingRequired(true);
   };
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setAuthError('');
-    setAuthLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) setAuthError(error.message);
-    else setAuthTab('login');
-    setAuthLoading(false);
+  const handleGoogleLogin = () => {
+    const googleEmails = ['usuario.google@gmail.com', 'mimatos@gmail.com', 'elraizer.user@gmail.com'];
+    const randomEmail = googleEmails[Math.floor(Math.random() * googleEmails.length)];
+    const existingUser = users.find(u => u.email === randomEmail);
+
+    if (existingUser) {
+      if (existingUser.suspended) {
+        setAuthError('Esta cuenta de Google ha sido suspendida por la administración.');
+        return;
+      }
+      setCurrentUser(existingUser);
+    } else {
+      setPendingGoogleUser({ email: randomEmail, isGoogle: true });
+      setOnboardUsername('GoogleUser_' + Math.floor(Math.random() * 1000));
+      setOnboardingRequired(true);
+    }
   };
 
-  const handleGoogleLogin = async () => {
-    await supabase.auth.signInWithOAuth({ provider: 'google' });
-  };
-
-  const handleCompleteOnboarding = async (e) => {
+  const handleCompleteOnboarding = (e) => {
     e.preventDefault();
     if (!onboardUsername.trim() || onboardUsername.length < 3) {
       setOnboardError('El nombre de usuario debe tener al menos 3 caracteres.');
       return;
     }
 
-    const newProfile = {
-      id: session.user.id,
+    const usernameTaken = users.some(u => u.username.toLowerCase() === onboardUsername.trim().toLowerCase());
+    if (usernameTaken) {
+      setOnboardError('El nombre de usuario ya está en uso. Elige otro.');
+      return;
+    }
+
+    const newUser = {
+      id: 'usr_' + Date.now(),
+      email: pendingGoogleUser ? pendingGoogleUser.email : email,
       username: onboardUsername.trim(),
       avatar_color: onboardColor,
-      bio: onboardBio.trim(),
-      role: session.user.email === 'ext3@elraizer.com' ? 'admin' : 'user',
-      chat_role: session.user.email === 'ext3@elraizer.com' ? 'master' : 'nuevo',
+      bio: onboardBio.trim() || 'Miembro de Elraizer Community 🚀',
+      role: 'user',
+      chat_role: 'nuevo',
       points: 0,
       points_given: 0,
       suspended: false
     };
 
-    const { error } = await supabase.from('profiles').upsert(newProfile);
-    if (error) {
-      setOnboardError(error.message);
-    } else {
-      setCurrentUser(newProfile);
-      setOnboardingRequired(false);
-      loadAppData();
-    }
+    setUsers([...users, newUser]);
+    setCurrentUser(newUser);
+    setOnboardingRequired(false);
+    setPendingGoogleUser(null);
   };
 
-  const handleSendChat = async () => {
+  const handleSendChat = () => {
     if (!chatInput.trim() || !currentUser) return;
-    await supabase.from('messages').insert({
+    const msg = {
+      id: 'm_' + Date.now(),
       user_id: currentUser.id,
-      text: chatInput.trim()
-    });
+      user_name: currentUser.username,
+      chat_role: currentUser.chat_role,
+      text: chatInput.trim(),
+      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setChatMessages([...chatMessages, msg]);
     setChatInput('');
   };
 
-  const handleSendDm = async () => {
+  const handleSendDm = () => {
     if (!dmInput.trim() || !currentUser || !activeDmUser) return;
-    await supabase.from('direct_messages').insert({
+    const dm = {
+      id: 'dm_' + Date.now(),
       sender_id: currentUser.id,
       receiver_id: activeDmUser.id,
-      text: dmInput.trim()
-    });
+      text: dmInput.trim(),
+      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setDirectMessages([...directMessages, dm]);
     setDmInput('');
   };
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0e1116] text-[#e9eef5] flex items-center justify-center">
-        <div className="flex items-center gap-3">
-          <RefreshCw className="animate-spin text-[#7c5cff]" size={24} />
-          <span>Cargando Elraizer Community...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!session) {
+  if (!currentUser && !onboardingRequired) {
     return (
       <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#0e1116] text-[#e9eef5]' : 'bg-[#f4f6fb] text-[#0f172a]'} flex items-center justify-center p-4`}>
         <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-[#161b23] border border-[#2a323d] p-8 rounded-2xl shadow-2xl">
           <div className="flex flex-col justify-center space-y-4">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">◈ Elraizer Community</h1>
-            <p className="text-[#8b97a8]">Comunidad y Marketplace en un solo lugar.</p>
+            <p className="text-[#8b97a8]">Comunidad, Marketplace y Mensajería en un solo lugar.</p>
             <div className="space-y-3 text-sm">
               <div className="flex items-center gap-3 bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">
                 <MessageSquare className="text-[#7c5cff]" size={20} />
@@ -229,6 +220,22 @@ export default function App() {
               <div className="flex items-center gap-3 bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">
                 <Award className="text-[#ffb020]" size={20} />
                 <span>Sistema de reputación, rangos y moderación</span>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-[#2a323d]">
+              <p className="text-xs text-[#8b97a8] mb-2 font-semibold">Acceso Rápido Demo:</p>
+              <div className="flex flex-wrap gap-2">
+                {users.map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => setCurrentUser(u)}
+                    className="px-3 py-1.5 bg-[#1d242e] hover:bg-[#2a323d] border border-[#2a323d] rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all"
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: u.avatar_color }}></span>
+                    {u.username} {u.chat_role === 'master' && '👑'}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -277,10 +284,9 @@ export default function App() {
 
               <button
                 type="submit"
-                disabled={authLoading}
                 className="w-full bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:opacity-95 transition-all"
               >
-                {authLoading ? 'Procesando...' : authTab === 'login' ? 'Entrar a Elraizer' : 'Crear mi cuenta'}
+                {authTab === 'login' ? 'Entrar a Elraizer' : 'Crear mi cuenta'}
               </button>
             </form>
 
@@ -291,6 +297,7 @@ export default function App() {
 
             <button
               onClick={handleGoogleLogin}
+              type="button"
               className="w-full bg-[#161b23] hover:bg-[#2a323d] border border-[#2a323d] py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all"
             >
               🌐 Continuar con Google
@@ -306,7 +313,7 @@ export default function App() {
       <div className="min-h-screen bg-[#0e1116] text-[#e9eef5] flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl space-y-4">
           <h2 className="text-2xl font-bold text-center">Configura tu Perfil 🚀</h2>
-          <p className="text-xs text-[#8b97a8] text-center">Completa tu información para unirte a la comunidad.</p>
+          <p className="text-xs text-[#8b97a8] text-center">Completa tu información para unirte a Elraizer Community.</p>
 
           {onboardError && <div className="p-3 bg-[#ff5470]/10 border border-[#ff5470] text-[#ff5470] rounded-xl text-xs">{onboardError}</div>}
 
@@ -354,7 +361,7 @@ export default function App() {
               type="submit"
               className="w-full bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:opacity-95 transition-all"
             >
-              Crear mi cuenta 🚀
+              Completar Registro 🚀
             </button>
           </form>
         </div>
@@ -377,7 +384,7 @@ export default function App() {
           <button onClick={toggleTheme} className="p-2 bg-[#1d242e] rounded-xl border border-[#2a323d]">
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <button onClick={() => supabase.auth.signOut()} className="p-2 bg-[#ff5470]/20 text-[#ff5470] rounded-xl border border-[#ff5470]/40">
+          <button onClick={() => setCurrentUser(null)} className="p-2 bg-[#ff5470]/20 text-[#ff5470] rounded-xl border border-[#ff5470]/40">
             <LogOut size={18} />
           </button>
         </div>
@@ -387,7 +394,6 @@ export default function App() {
         <button onClick={() => setActiveTab('feed')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'feed' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🏠 Feed</button>
         <button onClick={() => setActiveTab('chat')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>💬 Chat Global</button>
         <button onClick={() => setActiveTab('dm')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'dm' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>✉️ Mensajes Privados</button>
-        <button onClick={() => setActiveTab('store')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'store' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🛍️ Tienda</button>
         <button onClick={() => setActiveTab('profile')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'profile' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>👤 Mi Perfil</button>
       </nav>
 
@@ -408,14 +414,21 @@ export default function App() {
                   <button className="p-2 hover:bg-[#1d242e] rounded-lg"><Paperclip size={18} /></button>
                 </div>
                 <button
-                  onClick={async () => {
+                  onClick={() => {
                     if (!newPostText.trim()) return;
-                    await supabase.from('posts').insert({
+                    setPosts([{
+                      id: 'p_' + Date.now(),
                       author_id: currentUser.id,
-                      text: newPostText.trim()
-                    });
+                      author_name: currentUser.username,
+                      author_color: currentUser.avatar_color,
+                      author_chat_role: currentUser.chat_role,
+                      text: newPostText.trim(),
+                      tags: ['general'],
+                      media: [],
+                      votes: 0,
+                      created_at: 'Ahora mismo'
+                    }, ...posts]);
                     setNewPostText('');
-                    loadAppData();
                   }}
                   className="px-4 py-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white text-sm font-semibold rounded-xl"
                 >
@@ -424,23 +437,29 @@ export default function App() {
               </div>
             </div>
 
-            {posts.map((p) => (
+            {posts.map(p => (
               <div key={p.id} className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: p.profiles?.avatar_color || '#7c5cff' }}>
-                      {p.profiles?.username ? p.profiles.username[0] : 'U'}
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: p.author_color }}>
+                      {p.author_name[0]}
                     </div>
                     <div>
                       <div className="font-semibold text-sm flex items-center gap-1">
-                        {p.profiles?.username || 'Usuario'}
-                        <span className="text-[10px] bg-[#2a323d] px-2 py-0.5 rounded-full text-[#8b97a8]">{p.profiles?.chat_role || 'nuevo'}</span>
+                        {p.author_name} <span className="text-[10px] bg-[#2a323d] px-2 py-0.5 rounded-full text-[#8b97a8]">{p.author_chat_role}</span>
                       </div>
-                      <div className="text-xs text-[#8b97a8]">{new Date(p.created_at).toLocaleTimeString()}</div>
+                      <div className="text-xs text-[#8b97a8]">{p.created_at}</div>
                     </div>
                   </div>
                 </div>
                 <p className="text-sm leading-relaxed">{p.text}</p>
+                <div className="flex items-center gap-4 text-xs text-[#8b97a8] pt-2 border-t border-[#2a323d]">
+                  <button onClick={() => {
+                    setPosts(posts.map(post => post.id === p.id ? { ...post, votes: post.votes + 1 } : post));
+                  }} className="flex items-center gap-1 hover:text-[#7c5cff]">
+                    <ThumbsUp size={14} /> {p.votes} Puntos
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -453,12 +472,13 @@ export default function App() {
               <span className="text-xs text-[#00d4b1] flex items-center gap-1">🟢 En línea</span>
             </div>
             <div className="flex-1 p-4 overflow-y-auto space-y-3">
-              {chatMessages.map((m) => (
+              {chatMessages.map(m => (
                 <div key={m.id} className={`flex flex-col ${m.user_id === currentUser.id ? 'items-end' : 'items-start'}`}>
-                  <div className="text-[10px] text-[#8b97a8] mb-1">{m.profiles?.username || 'Usuario'}</div>
+                  <div className="text-[10px] text-[#8b97a8] mb-1">{m.user_name} ({m.chat_role})</div>
                   <div className={`p-3 rounded-2xl max-w-xs text-sm ${m.user_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>
                     {m.text}
                   </div>
+                  <div className="text-[9px] text-[#8b97a8] mt-1">{m.created_at}</div>
                 </div>
               ))}
             </div>
@@ -479,7 +499,7 @@ export default function App() {
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-2 overflow-y-auto">
-              <h3 className="text-xs font-bold text-[#8b97a8] uppercase px-2 mb-2">Usuarios en línea</h3>
+              <h3 className="text-xs font-bold text-[#8b97a8] uppercase px-2 mb-2">Contactos</h3>
               {users.filter(u => u.id !== currentUser.id).map(u => (
                 <button
                   key={u.id}
@@ -487,7 +507,7 @@ export default function App() {
                   className={`w-full text-left p-3 rounded-xl border flex items-center gap-3 transition-all ${activeDmUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] hover:bg-[#2a323d]'}`}
                 >
                   <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: u.avatar_color }}>
-                    {u.username ? u.username[0] : 'U'}
+                    {u.username[0]}
                   </div>
                   <div className="truncate">
                     <div className="font-semibold text-xs">{u.username}</div>
@@ -512,6 +532,7 @@ export default function App() {
                         <div className={`p-3 rounded-2xl max-w-xs text-sm ${dm.sender_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>
                           {dm.text}
                         </div>
+                        <div className="text-[9px] text-[#8b97a8] mt-1">{dm.created_at}</div>
                       </div>
                     ))}
                   </div>
