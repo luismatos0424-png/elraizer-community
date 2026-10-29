@@ -196,7 +196,7 @@ export default function App() {
   // Navigation
   const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
-  const [dmFolder, setDmFolder] = useState('all'); // 'all' muestra todos los mensajes con el usuario sin filtrar indebidamente
+  const [dmFolder, setDmFolder] = useState('all');
   const [dmSearchQuery, setDmSearchQuery] = useState('');
 
   // Modals
@@ -229,6 +229,23 @@ export default function App() {
   const [editGithub, setEditGithub] = useState('');
   const [editTwitter, setEditTwitter] = useState('');
 
+  // Escuchar cambios de localStorage en tiempo real entre pestañas o sesiones
+  useEffect(() => {
+    const syncData = () => {
+      const savedUsers = localStorage.getItem('elraizer_users');
+      if (savedUsers) setUsers(JSON.parse(savedUsers));
+
+      const savedDms = localStorage.getItem('elraizer_dms');
+      if (savedDms) setDirectMessages(JSON.parse(savedDms));
+
+      const savedPosts = localStorage.getItem('elraizer_posts');
+      if (savedPosts) setPosts(JSON.parse(savedPosts));
+    };
+
+    window.addEventListener('storage', syncData);
+    return () => window.removeEventListener('storage', syncData);
+  }, []);
+
   // Sync LocalStorage
   useEffect(() => { localStorage.setItem('elraizer_users', JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem('elraizer_posts', JSON.stringify(posts)); }, [posts]);
@@ -250,8 +267,26 @@ export default function App() {
     }
   }, [currentUser]);
 
+  // Marcar como leídos los mensajes del chat activo
+  useEffect(() => {
+    if (currentUser && activeDmUser && activeTab === 'dm') {
+      const hasUnread = directMessages.some(m => m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id && !m.read);
+      if (hasUnread) {
+        setDirectMessages(prev => prev.map(m => {
+          if (m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id) {
+            return { ...m, read: true };
+          }
+          return m;
+        }));
+      }
+    }
+  }, [activeDmUser, currentUser, activeTab, directMessages]);
+
   // Online status helper
   const onlineUsers = users.filter(u => u.isOnline);
+
+  // Contador global de mensajes no leídos para el usuario actual
+  const unreadTotalCount = currentUser ? directMessages.filter(m => m.receiver_id === currentUser.id && !m.read).length : 0;
 
   // Rango / Categoria límite de puntos del usuario actual
   const userRoleKey = currentUser?.chat_role || 'miembro';
@@ -384,12 +419,15 @@ export default function App() {
     setPostAttachments([]);
   };
 
-  // Auth Handlers
+  // Auth Handlers con actualización inmediata de datos almacenados
   const handleLogin = (e) => {
     e.preventDefault();
     setAuthError('');
+    const savedUsers = localStorage.getItem('elraizer_users');
+    const currentUsersList = savedUsers ? JSON.parse(savedUsers) : users;
+
     const inputClean = identifier.trim().toLowerCase();
-    const found = users.find(u => u.email.toLowerCase() === inputClean || u.username.toLowerCase() === inputClean);
+    const found = currentUsersList.find(u => u.email.toLowerCase() === inputClean || u.username.toLowerCase() === inputClean);
 
     if (found) {
       if (found.status === 'suspended') return setAuthError('Esta cuenta ha sido suspendida temporalmente.');
@@ -397,8 +435,13 @@ export default function App() {
       if (found.password && found.password !== password) return setAuthError('Contraseña incorrecta.');
       
       const loggedUser = { ...found, isOnline: true };
-      setUsers(users.map(u => u.id === found.id ? loggedUser : u));
+      const updatedList = currentUsersList.map(u => u.id === found.id ? loggedUser : u);
+      setUsers(updatedList);
       setCurrentUser(loggedUser);
+
+      // Cargar mensajes actualizados
+      const savedDms = localStorage.getItem('elraizer_dms');
+      if (savedDms) setDirectMessages(JSON.parse(savedDms));
     } else {
       setAuthError('Usuario no encontrado.');
     }
@@ -483,7 +526,7 @@ export default function App() {
     setDirectMessages(directMessages.filter(dm => dm.id !== dmId));
   };
 
-  // FIX CRÍTICO: Envío de mensajes garantizado
+  // ENVÍO DE MENSAJES CON PERSISTENCIA
   const handleSendDm = () => {
     if (!dmInput.trim() || !currentUser || !activeDmUser) return;
     
@@ -496,7 +539,12 @@ export default function App() {
       read: false
     };
 
-    setDirectMessages(prevMessages => [...prevMessages, dm]);
+    setDirectMessages(prevMessages => {
+      const updated = [...prevMessages, dm];
+      localStorage.setItem('elraizer_dms', JSON.stringify(updated));
+      return updated;
+    });
+
     setDmInput('');
   };
 
@@ -598,7 +646,17 @@ export default function App() {
         <button onClick={() => setActiveTab('feed')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'feed' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🏠 Feed</button>
         <button onClick={() => setActiveTab('marketplace')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'marketplace' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🛒 Marketplace</button>
         <button onClick={() => setActiveTab('chat')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>💬 Chat Global</button>
-        <button onClick={() => setActiveTab('dm')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'dm' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>✉️ Mensajería Pro</button>
+        
+        {/* PESTAÑA MENSAJERÍA CON NOTIFICACIÓN Y INSIGNIA DE NO LEÍDOS */}
+        <button onClick={() => setActiveTab('dm')} className={`relative px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'dm' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>
+          ✉️ Mensajería Pro
+          {unreadTotalCount > 0 && (
+            <span className="bg-[#ff5470] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-bounce">
+              {unreadTotalCount}
+            </span>
+          )}
+        </button>
+
         <button onClick={() => setActiveTab('profile')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'profile' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>👤 Mi Perfil</button>
       </nav>
 
@@ -773,7 +831,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MENSAJERÍA DIRECTA CON FILTRADO Y ENVÍO REPARADO */}
+        {/* TAB MENSAJERÍA DIRECTA REPARADA */}
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-3 flex flex-col">
@@ -810,6 +868,7 @@ export default function App() {
               <div className="flex-1 overflow-y-auto space-y-2">
                 {filteredUsersForDm.map(u => {
                   const isPinned = pinnedUserIds.includes(u.id);
+                  const unreadCount = directMessages.filter(m => m.sender_id === u.id && m.receiver_id === currentUser.id && !m.read).length;
 
                   return (
                     <div
@@ -826,6 +885,7 @@ export default function App() {
                           <div className="font-semibold text-xs text-white flex items-center gap-1">
                             @{u.username}
                             {isPinned && <Pin size={12} className="text-[#ffb020] fill-[#ffb020]" />}
+                            {unreadCount > 0 && <span className="bg-[#00d4b1] text-slate-950 text-[9px] font-bold px-1.5 rounded-full">NUEVO</span>}
                           </div>
                           <div className="text-[10px] text-[#8b97a8] truncate">{u.email}</div>
                         </div>
@@ -876,7 +936,6 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* VISUALIZACIÓN DE MENSAJES CORREGIDA */}
                   <div className="flex-1 p-4 overflow-y-auto space-y-3">
                     {directMessages.filter(dm => {
                       const isBetweenTheseTwo = 
@@ -887,7 +946,7 @@ export default function App() {
 
                       if (dmFolder === 'inbox') return dm.sender_id === activeDmUser.id;
                       if (dmFolder === 'sent') return dm.sender_id === currentUser.id;
-                      return true; // Folder 'all'
+                      return true;
                     }).length === 0 ? (
                       <div className="text-center text-xs text-[#8b97a8] py-8">
                         No hay mensajes registrados. ¡Escribe el primer mensaje a continuación!
@@ -917,7 +976,6 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* FORMULARIO DE ENVÍO DE MENSAJES */}
                   <form onSubmit={(e) => { e.preventDefault(); handleSendDm(); }} className="p-3 border-t border-[#2a323d] flex gap-2">
                     <input 
                       type="text" 
