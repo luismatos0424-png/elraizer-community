@@ -7,128 +7,356 @@ import {
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://demo-elraizer.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-anon-key';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tu-proyecto.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'tu-anon-key';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const INITIAL_USERS = [
-  { id: 'ext3-id', username: 'EXT3', bio: 'Cuenta maestra · Fundador de Elraizer Community', avatar_color: '#ffb020', role: 'admin', chat_role: 'master', points: 1250, points_given: 0, suspended: false },
-  { id: 'lucia-id', username: 'LuciaDev', bio: 'Fullstack Dev & UI Enthusiast ⚡', avatar_color: '#7c5cff', role: 'user', chat_role: 'moderador', points: 120, points_given: 0, suspended: false },
-  { id: 'marco-id', username: 'MarcoPro', bio: 'Gamer & Techie 🎮', avatar_color: '#00d4b1', role: 'user', chat_role: 'nuevo', points: 35, points_given: 0, suspended: false },
-  { id: 'sofia-id', username: 'SofiaDesign', bio: 'UI/UX Designer & Art director 🎨', avatar_color: '#ff5470', role: 'user', chat_role: 'maestro', points: 210, points_given: 0, suspended: false },
-  { id: 'diego-id', username: 'DiegoCodes', bio: 'Backend developer & Cloud engineer 🚀', avatar_color: '#3b82f6', role: 'user', chat_role: 'nuevo', points: 15, points_given: 0, suspended: false }
-];
-
-const INITIAL_POSTS = [
-  { id: 'p1', author_id: 'ext3-id', author_name: 'EXT3', author_color: '#ffb020', author_chat_role: 'master', text: '¡Bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y envía mensajes privados.', tags: ['bienvenida', 'comunidad', 'anuncio'], media: [], votes: 42, created_at: 'Hace 2 horas', comments: [] },
-  { id: 'p2', author_id: 'lucia-id', author_name: 'LuciaDev', author_color: '#7c5cff', author_chat_role: 'moderador', text: 'Acabo de publicar un nuevo recurso de UI kits en el Marketplace. ¡Echadle un vistazo!', tags: ['diseño', 'marketplace'], media: [], votes: 15, created_at: 'Hace 1 hora', comments: [] }
+const AVATAR_COLORS = [
+  '#7c5cff', '#00d4b1', '#ff5470', '#ffb020',
+  '#3b82f6', '#10b981', '#ec4899', '#8b5cf6'
 ];
 
 export default function App() {
   const [theme, setTheme] = useState('dark');
+  const [session, setSession] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('feed');
-  const [users, setUsers] = useState(INITIAL_USERS);
-  const [posts, setPosts] = useState(INITIAL_POSTS);
-  const [notifications, setNotifications] = useState([]);
-  const [cart, setCart] = useState([]);
+  const [onboardingRequired, setOnboardingRequired] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Auth form states
+  const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // Onboarding states
+  const [onboardUsername, setOnboardUsername] = useState('');
+  const [onboardColor, setOnboardColor] = useState(AVATAR_COLORS[0]);
+  const [onboardBio, setOnboardBio] = useState('');
+  const [onboardError, setOnboardError] = useState('');
+
+  // Main navigation & features
+  const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'chat' | 'dm' | 'store' | 'cart' | 'notifications' | 'profile'
+  const [users, setUsers] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [chatMessages, setChatMessages] = useState([]);
   const [directMessages, setDirectMessages] = useState([]);
   const [activeDmUser, setActiveDmUser] = useState(null);
-  const [chatMessages, setChatMessages] = useState([
-    { id: 'm1', user_id: 'ext3-id', user_name: 'EXT3', chat_role: 'master', text: 'Chat global activo. Recuerden mantener el respeto.', created_at: '12:00' }
-  ]);
+  const [notifications, setNotifications] = useState([]);
+  const [cart, setCart] = useState([]);
 
-  const [authStep, setAuthStep] = useState('login');
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPass, setLoginPass] = useState('');
-  const [regUser, setRegUser] = useState('');
-  const [regColor, setRegColor] = useState('#7c5cff');
-  const [regBio, setRegBio] = useState('');
-
+  // Inputs
   const [newPostText, setNewPostText] = useState('');
+  const [postMediaFiles, setPostMediaFiles] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showModModal, setShowModModal] = useState(false);
 
-  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchUserProfile(session.user.id);
+      else setLoading(false);
+    });
 
-  const handleLogin = (u) => {
-    setCurrentUser(u);
-    setActiveTab('feed');
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchUserProfile(session.user.id);
+      else {
+        setCurrentUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchUserProfile = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error || !data || !data.username) {
+        setOnboardingRequired(true);
+      } else {
+        setCurrentUser(data);
+        setOnboardingRequired(false);
+        loadAppData();
+        subscribeToRealtime();
+      }
+    } catch (err) {
+      setOnboardingRequired(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDemoLogin = (username) => {
-    const found = users.find(u => u.username === username);
-    if (found) handleLogin(found);
+  const loadAppData = async () => {
+    const { data: profilesData } = await supabase.from('profiles').select('*');
+    if (profilesData) setUsers(profilesData);
+
+    const { data: postsData } = await supabase.from('posts').select('*, profiles(*)').order('created_at', { ascending: false });
+    if (postsData) setPosts(postsData);
+
+    const { data: productsData } = await supabase.from('products').select('*, profiles(*)').order('created_at', { ascending: false });
+    if (productsData) setProducts(productsData);
+
+    const { data: messagesData } = await supabase.from('messages').select('*, profiles(*)').order('created_at', { ascending: true });
+    if (messagesData) setChatMessages(messagesData);
+
+    const { data: dmData } = await supabase.from('direct_messages').select('*').order('created_at', { ascending: true });
+    if (dmData) setDirectMessages(dmData);
   };
 
-  const handleSendChat = () => {
-    if (!chatInput.trim() || !currentUser) return;
-    const msg = {
-      id: 'm_' + Date.now(),
-      user_id: currentUser.id,
-      user_name: currentUser.username,
-      chat_role: currentUser.chat_role,
-      text: chatInput,
-      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const subscribeToRealtime = () => {
+    supabase
+      .channel('public_chat')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        setChatMessages((prev) => [...prev, payload.new]);
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
+        setDirectMessages((prev) => [...prev, payload.new]);
+      })
+      .subscribe();
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setAuthError(error.message);
+    setAuthLoading(false);
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) setAuthError(error.message);
+    else setAuthTab('login');
+    setAuthLoading(false);
+  };
+
+  const handleGoogleLogin = async () => {
+    await supabase.auth.signInWithOAuth({ provider: 'google' });
+  };
+
+  const handleCompleteOnboarding = async (e) => {
+    e.preventDefault();
+    if (!onboardUsername.trim() || onboardUsername.length < 3) {
+      setOnboardError('El nombre de usuario debe tener al menos 3 caracteres.');
+      return;
+    }
+
+    const newProfile = {
+      id: session.user.id,
+      username: onboardUsername.trim(),
+      avatar_color: onboardColor,
+      bio: onboardBio.trim(),
+      role: session.user.email === 'ext3@elraizer.com' ? 'admin' : 'user',
+      chat_role: session.user.email === 'ext3@elraizer.com' ? 'master' : 'nuevo',
+      points: 0,
+      points_given: 0,
+      suspended: false
     };
-    setChatMessages([...chatMessages, msg]);
+
+    const { error } = await supabase.from('profiles').upsert(newProfile);
+    if (error) {
+      setOnboardError(error.message);
+    } else {
+      setCurrentUser(newProfile);
+      setOnboardingRequired(false);
+      loadAppData();
+    }
+  };
+
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || !currentUser) return;
+    await supabase.from('messages').insert({
+      user_id: currentUser.id,
+      text: chatInput.trim()
+    });
     setChatInput('');
   };
 
-  const handleSendDm = () => {
+  const handleSendDm = async () => {
     if (!dmInput.trim() || !currentUser || !activeDmUser) return;
-    const dm = {
-      id: 'dm_' + Date.now(),
+    await supabase.from('direct_messages').insert({
       sender_id: currentUser.id,
       receiver_id: activeDmUser.id,
-      text: dmInput,
-      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setDirectMessages([...directMessages, dm]);
+      text: dmInput.trim()
+    });
     setDmInput('');
   };
 
-  if (!currentUser) {
+  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0e1116] text-[#e9eef5] flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <RefreshCw className="animate-spin text-[#7c5cff]" size={24} />
+          <span>Cargando Elraizer Community...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
     return (
       <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#0e1116] text-[#e9eef5]' : 'bg-[#f4f6fb] text-[#0f172a]'} flex items-center justify-center p-4`}>
         <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-[#161b23] border border-[#2a323d] p-8 rounded-2xl shadow-2xl">
           <div className="flex flex-col justify-center space-y-4">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">◈ Elraizer Community</h1>
-            <p className="text-[#8b97a8]">Comunidad, Marketplace y Mensajería en un solo lugar.</p>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2"><span>💬</span> Chat global en vivo y mensajes privados</div>
-              <div className="flex items-center gap-2"><span>🛍️</span> Marketplace de productos y servicios</div>
-              <div className="flex items-center gap-2"><span>⭐</span> Sistema de reputación y rangos</div>
-              <div className="flex items-center gap-2"><span>👑</span> Moderación jerárquica y seguridad RLS</div>
+            <p className="text-[#8b97a8]">Comunidad y Marketplace en un solo lugar.</p>
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center gap-3 bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">
+                <MessageSquare className="text-[#7c5cff]" size={20} />
+                <span>Chat global en vivo y mensajes privados directos</span>
+              </div>
+              <div className="flex items-center gap-3 bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">
+                <ShoppingBag className="text-[#00d4b1]" size={20} />
+                <span>Marketplace de productos y servicios digitales</span>
+              </div>
+              <div className="flex items-center gap-3 bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">
+                <Award className="text-[#ffb020]" size={20} />
+                <span>Sistema de reputación, rangos y moderación</span>
+              </div>
             </div>
           </div>
-          <div className="flex flex-col justify-center space-y-4 bg-[#1d242e] p-6 rounded-xl border border-[#2a323d]">
-            <h2 className="text-xl font-semibold">Iniciar Sesión Demo</h2>
-            <p className="text-xs text-[#8b97a8]">Haz clic en cualquiera de los perfiles para ingresar de inmediato:</p>
-            <div className="space-y-2">
-              {users.map(u => (
-                <button
-                  key={u.id}
-                  onClick={() => handleDemoLogin(u.username)}
-                  className="w-full text-left px-4 py-3 bg-[#161b23] hover:bg-[#2a323d] border border-[#2a323d] rounded-xl flex items-center justify-between transition-all"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: u.avatar_color }}>
-                      {u.username[0]}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-sm flex items-center gap-1">
-                        {u.username} {u.chat_role === 'master' && '👑'}
-                      </div>
-                      <div className="text-xs text-[#8b97a8]">{u.bio}</div>
-                    </div>
-                  </div>
-                  <span className="text-xs bg-[#7c5cff]/20 text-[#a78bfa] px-2 py-1 rounded-md">{u.chat_role}</span>
-                </button>
-              ))}
+
+          <div className="bg-[#1d242e] p-6 rounded-xl border border-[#2a323d] space-y-4">
+            <div className="flex border-b border-[#2a323d] mb-4">
+              <button
+                onClick={() => setAuthTab('login')}
+                className={`flex-1 pb-2 font-semibold text-sm ${authTab === 'login' ? 'border-b-2 border-[#7c5cff] text-[#7c5cff]' : 'text-[#8b97a8]'}`}
+              >
+                Iniciar Sesión
+              </button>
+              <button
+                onClick={() => setAuthTab('register')}
+                className={`flex-1 pb-2 font-semibold text-sm ${authTab === 'register' ? 'border-b-2 border-[#7c5cff] text-[#7c5cff]' : 'text-[#8b97a8]'}`}
+              >
+                Crear Cuenta
+              </button>
             </div>
+
+            {authError && <div className="p-3 bg-[#ff5470]/10 border border-[#ff5470] text-[#ff5470] rounded-xl text-xs">{authError}</div>}
+
+            <form onSubmit={authTab === 'login' ? handleLogin : handleRegister} className="space-y-3">
+              <div>
+                <label className="text-xs text-[#8b97a8] block mb-1">Correo Electrónico</label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]"
+                  placeholder="tuemail@ejemplo.com"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[#8b97a8] block mb-1">Contraseña</label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:opacity-95 transition-all"
+              >
+                {authLoading ? 'Procesando...' : authTab === 'login' ? 'Entrar a Elraizer' : 'Crear mi cuenta'}
+              </button>
+            </form>
+
+            <div className="relative my-4 text-center text-xs text-[#8b97a8]">
+              <span className="bg-[#1d242e] px-2 relative z-10">O continúa con</span>
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#2a323d]"></div></div>
+            </div>
+
+            <button
+              onClick={handleGoogleLogin}
+              className="w-full bg-[#161b23] hover:bg-[#2a323d] border border-[#2a323d] py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all"
+            >
+              🌐 Continuar con Google
+            </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (onboardingRequired) {
+    return (
+      <div className="min-h-screen bg-[#0e1116] text-[#e9eef5] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl space-y-4">
+          <h2 className="text-2xl font-bold text-center">Configura tu Perfil 🚀</h2>
+          <p className="text-xs text-[#8b97a8] text-center">Completa tu información para unirte a la comunidad.</p>
+
+          {onboardError && <div className="p-3 bg-[#ff5470]/10 border border-[#ff5470] text-[#ff5470] rounded-xl text-xs">{onboardError}</div>}
+
+          <form onSubmit={handleCompleteOnboarding} className="space-y-4">
+            <div>
+              <label className="text-xs text-[#8b97a8] block mb-1">Nombre de Usuario (único)</label>
+              <input
+                type="text"
+                required
+                value={onboardUsername}
+                onChange={(e) => setOnboardUsername(e.target.value)}
+                className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]"
+                placeholder="ej: DevMaster"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-[#8b97a8] block mb-1">Color de Avatar</label>
+              <div className="flex gap-2 justify-between">
+                {AVATAR_COLORS.map((c) => (
+                  <button
+                    type="button"
+                    key={c}
+                    onClick={() => setOnboardColor(c)}
+                    className={`w-8 h-8 rounded-full border-2 transition-all ${onboardColor === c ? 'border-white scale-110' : 'border-transparent'}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-[#8b97a8] block mb-1">Biografía (máx 80 caracteres)</label>
+              <input
+                type="text"
+                maxLength={80}
+                value={onboardBio}
+                onChange={(e) => setOnboardBio(e.target.value)}
+                className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]"
+                placeholder="Desarrollador / Entusiasta de tecnología..."
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:opacity-95 transition-all"
+            >
+              Crear mi cuenta 🚀
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -141,7 +369,7 @@ export default function App() {
           ◈ Elraizer Community
         </div>
         <div className="flex items-center gap-3">
-          {currentUser.role === 'admin' && (
+          {currentUser?.role === 'admin' && (
             <button onClick={() => setShowAdminPanel(!showAdminPanel)} className="p-2 bg-[#ffb020]/20 text-[#ffb020] rounded-xl border border-[#ffb020]/40 font-semibold text-xs flex items-center gap-1">
               👑 Panel Maestro
             </button>
@@ -149,7 +377,7 @@ export default function App() {
           <button onClick={toggleTheme} className="p-2 bg-[#1d242e] rounded-xl border border-[#2a323d]">
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <button onClick={() => setCurrentUser(null)} className="p-2 bg-[#ff5470]/20 text-[#ff5470] rounded-xl border border-[#ff5470]/40">
+          <button onClick={() => supabase.auth.signOut()} className="p-2 bg-[#ff5470]/20 text-[#ff5470] rounded-xl border border-[#ff5470]/40">
             <LogOut size={18} />
           </button>
         </div>
@@ -180,22 +408,14 @@ export default function App() {
                   <button className="p-2 hover:bg-[#1d242e] rounded-lg"><Paperclip size={18} /></button>
                 </div>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!newPostText.trim()) return;
-                    setPosts([{
-                      id: 'p_' + Date.now(),
+                    await supabase.from('posts').insert({
                       author_id: currentUser.id,
-                      author_name: currentUser.username,
-                      author_color: currentUser.avatar_color,
-                      author_chat_role: currentUser.chat_role,
-                      text: newPostText,
-                      tags: ['general'],
-                      media: [],
-                      votes: 0,
-                      created_at: 'Ahora mismo',
-                      comments: []
-                    }, ...posts]);
+                      text: newPostText.trim()
+                    });
                     setNewPostText('');
+                    loadAppData();
                   }}
                   className="px-4 py-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white text-sm font-semibold rounded-xl"
                 >
@@ -204,29 +424,23 @@ export default function App() {
               </div>
             </div>
 
-            {posts.map(p => (
+            {posts.map((p) => (
               <div key={p.id} className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: p.author_color }}>
-                      {p.author_name[0]}
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: p.profiles?.avatar_color || '#7c5cff' }}>
+                      {p.profiles?.username ? p.profiles.username[0] : 'U'}
                     </div>
                     <div>
                       <div className="font-semibold text-sm flex items-center gap-1">
-                        {p.author_name} <span className="text-[10px] bg-[#2a323d] px-2 py-0.5 rounded-full text-[#8b97a8]">{p.author_chat_role}</span>
+                        {p.profiles?.username || 'Usuario'}
+                        <span className="text-[10px] bg-[#2a323d] px-2 py-0.5 rounded-full text-[#8b97a8]">{p.profiles?.chat_role || 'nuevo'}</span>
                       </div>
-                      <div className="text-xs text-[#8b97a8]">{p.created_at}</div>
+                      <div className="text-xs text-[#8b97a8]">{new Date(p.created_at).toLocaleTimeString()}</div>
                     </div>
                   </div>
                 </div>
                 <p className="text-sm leading-relaxed">{p.text}</p>
-                <div className="flex items-center gap-4 text-xs text-[#8b97a8] pt-2 border-t border-[#2a323d]">
-                  <button onClick={() => {
-                    setPosts(posts.map(post => post.id === p.id ? { ...post, votes: post.votes + 1 } : post));
-                  }} className="flex items-center gap-1 hover:text-[#7c5cff]">
-                    <ThumbsUp size={14} /> {p.votes} Puntos
-                  </button>
-                </div>
               </div>
             ))}
           </div>
@@ -239,13 +453,12 @@ export default function App() {
               <span className="text-xs text-[#00d4b1] flex items-center gap-1">🟢 En línea</span>
             </div>
             <div className="flex-1 p-4 overflow-y-auto space-y-3">
-              {chatMessages.map(m => (
+              {chatMessages.map((m) => (
                 <div key={m.id} className={`flex flex-col ${m.user_id === currentUser.id ? 'items-end' : 'items-start'}`}>
-                  <div className="text-[10px] text-[#8b97a8] mb-1">{m.user_name} ({m.chat_role})</div>
+                  <div className="text-[10px] text-[#8b97a8] mb-1">{m.profiles?.username || 'Usuario'}</div>
                   <div className={`p-3 rounded-2xl max-w-xs text-sm ${m.user_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>
                     {m.text}
                   </div>
-                  <div className="text-[9px] text-[#8b97a8] mt-1">{m.created_at}</div>
                 </div>
               ))}
             </div>
@@ -266,7 +479,7 @@ export default function App() {
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-2 overflow-y-auto">
-              <h3 className="text-xs font-bold text-[#8b97a8] uppercase px-2 mb-2">Contactos</h3>
+              <h3 className="text-xs font-bold text-[#8b97a8] uppercase px-2 mb-2">Usuarios en línea</h3>
               {users.filter(u => u.id !== currentUser.id).map(u => (
                 <button
                   key={u.id}
@@ -274,7 +487,7 @@ export default function App() {
                   className={`w-full text-left p-3 rounded-xl border flex items-center gap-3 transition-all ${activeDmUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] hover:bg-[#2a323d]'}`}
                 >
                   <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: u.avatar_color }}>
-                    {u.username[0]}
+                    {u.username ? u.username[0] : 'U'}
                   </div>
                   <div className="truncate">
                     <div className="font-semibold text-xs">{u.username}</div>
@@ -299,7 +512,6 @@ export default function App() {
                         <div className={`p-3 rounded-2xl max-w-xs text-sm ${dm.sender_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>
                           {dm.text}
                         </div>
-                        <div className="text-[9px] text-[#8b97a8] mt-1">{dm.created_at}</div>
                       </div>
                     ))}
                   </div>
