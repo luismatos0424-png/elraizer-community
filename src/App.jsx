@@ -6,7 +6,8 @@ import {
   ShoppingBag, Lock, UserX, AlertTriangle, ChevronRight, Award, MessageCircle, Mail,
   DollarSign, Package, CheckCircle2, Crown, Users, Settings, Activity, Camera,
   Edit3, Globe, Github, Twitter, Linkedin, Briefcase, MapPin, Calendar, Heart, Eye,
-  Archive, Inbox, Send as SendIcon, FileText, CheckCheck, UserMinus, ShieldOff, Layers, Filter
+  Archive, Inbox, Send as SendIcon, FileText, CheckCheck, UserMinus, ShieldOff, Layers, Filter,
+  Wifi, Circle
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
@@ -34,7 +35,8 @@ const INITIAL_USERS = [
     chat_role: 'master', 
     points: 1250, 
     joinedDate: 'Octubre 2024',
-    status: 'active' // active, suspended, banned
+    status: 'active',
+    isOnline: true
   },
   { 
     id: 'usr_demo1', 
@@ -55,7 +57,30 @@ const INITIAL_USERS = [
     chat_role: 'miembro', 
     points: 120, 
     joinedDate: 'Enero 2025',
-    status: 'active'
+    status: 'active',
+    isOnline: true
+  },
+  { 
+    id: 'usr_demo2', 
+    email: 'sora@elraizer.com', 
+    username: 'SoraCode', 
+    password: 'User1234*', 
+    fullName: 'Soraia Vivas',
+    headline: 'Diseñadora UI/UX',
+    bio: 'Especialista en prototipado y diseño de interfaces dark mode.', 
+    location: 'Medellín, Colombia',
+    website: '',
+    github: 'soracode',
+    twitter: '',
+    avatar_url: '',
+    banner_url: '',
+    avatar_color: '#ec4899', 
+    role: 'user', 
+    chat_role: 'miembro', 
+    points: 340, 
+    joinedDate: 'Febrero 2025',
+    status: 'active',
+    isOnline: false
   }
 ];
 
@@ -95,9 +120,9 @@ const INITIAL_PRODUCTS = [
     description: 'Diseño responsive ultrafino optimizado para portales comunitarios y paneles e-commerce.',
     price: 45.00,
     category: 'Plantillas',
-    seller_id: 'ext3-id',
-    seller_name: 'EXT3',
-    seller_color: '#ffb020',
+    seller_id: 'usr_demo1',
+    seller_name: 'DevUser',
+    seller_color: '#3b82f6',
     image: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=600&auto=format&fit=crop&q=80',
     rating: 5.0,
     sales: 24,
@@ -154,6 +179,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
   const [dmFolder, setDmFolder] = useState('inbox'); // inbox, sent
+  const [dmSearchQuery, setDmSearchQuery] = useState('');
 
   // Modals
   const [showCartModal, setShowCartModal] = useState(false);
@@ -161,7 +187,6 @@ export default function App() {
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [selectedAdminUser, setSelectedAdminUser] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [orderSuccess, setOrderSuccess] = useState(false);
 
   // New Post Inputs & File Attachments
   const [newPostText, setNewPostText] = useState('');
@@ -191,7 +216,6 @@ export default function App() {
   const [editBannerUrl, setEditBannerUrl] = useState('');
 
   const avatarInputRef = useRef(null);
-  const bannerInputRef = useRef(null);
 
   // Sync LocalStorage
   useEffect(() => { localStorage.setItem('elraizer_users', JSON.stringify(users)); }, [users]);
@@ -215,7 +239,36 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Handle Post File Attachments (Images, Videos, Files)
+  // Online status helper
+  const onlineUsers = users.filter(u => u.isOnline);
+
+  // Handle Checkout / Direct Message Payment Request
+  const handleCheckout = () => {
+    if (cart.length === 0 || !currentUser) return;
+
+    // Direct message generated for each distinct seller in cart
+    cart.forEach(item => {
+      const seller = users.find(u => u.id === item.seller_id) || { id: item.seller_id, username: item.seller_name };
+      const autoMessage = `🛒 ¡Hola @${seller.username}! Estoy interesado en comprar tu producto "${item.title}" por $${item.price.toFixed(2)} USD. ¿Cuáles son los métodos de pago disponibles (Transferencia, Crypto, Nequi, Paypal)?`;
+
+      const newDm = {
+        id: 'dm_order_' + Date.now() + Math.random(),
+        sender_id: currentUser.id,
+        receiver_id: seller.id,
+        text: autoMessage,
+        created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        read: false
+      };
+
+      setDirectMessages(prev => [...prev, newDm]);
+    });
+
+    setCart([]);
+    setShowCartModal(false);
+    setActiveTab('dm');
+  };
+
+  // Handle Post File Attachments
   const handlePostFileUpload = (e, fileType) => {
     const files = Array.from(e.target.files);
     files.forEach(file => {
@@ -263,19 +316,13 @@ export default function App() {
     const found = users.find(u => u.email.toLowerCase() === inputClean || u.username.toLowerCase() === inputClean);
 
     if (found) {
-      if (found.status === 'suspended') {
-        setAuthError('Esta cuenta ha sido suspendida temporalmente.');
-        return;
-      }
-      if (found.status === 'banned') {
-        setAuthError('Esta cuenta ha sido BANEADA permanentemente.');
-        return;
-      }
-      if (found.password && found.password !== password) {
-        setAuthError('Contraseña incorrecta.');
-        return;
-      }
-      setCurrentUser(found);
+      if (found.status === 'suspended') return setAuthError('Esta cuenta ha sido suspendida temporalmente.');
+      if (found.status === 'banned') return setAuthError('Esta cuenta ha sido BANEADA permanentemente.');
+      if (found.password && found.password !== password) return setAuthError('Contraseña incorrecta.');
+      
+      const loggedUser = { ...found, isOnline: true };
+      setUsers(users.map(u => u.id === found.id ? loggedUser : u));
+      setCurrentUser(loggedUser);
     } else {
       setAuthError('Usuario no encontrado.');
     }
@@ -287,9 +334,7 @@ export default function App() {
     if (!identifier || !password) return setAuthError('Completa todos los campos.');
 
     const inputClean = identifier.trim().toLowerCase();
-    if (inputClean === 'ext3' || inputClean === 'ext3@elraizer.com') {
-      return setAuthError('Reservado para la cuenta maestra.');
-    }
+    if (inputClean === 'ext3' || inputClean === 'ext3@elraizer.com') return setAuthError('Reservado para la cuenta maestra.');
 
     const exists = users.find(u => u.email.toLowerCase() === inputClean || u.username.toLowerCase() === inputClean);
     if (exists) return setAuthError('Usuario o correo ya registrado.');
@@ -307,24 +352,20 @@ export default function App() {
       location: 'Colombia',
       website: '', github: '', twitter: '', avatar_url: '', banner_url: '',
       avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-      role: 'user', chat_role: 'nuevo', points: 0, joinedDate: 'Reciente', status: 'active'
+      role: 'user', chat_role: 'nuevo', points: 0, joinedDate: 'Reciente', status: 'active', isOnline: true
     };
 
     setUsers([...users, newUser]);
     setCurrentUser(newUser);
   };
 
-  // Professional Admin Panel Actions
+  // Admin Actions
   const handleAdminUserAction = (userId, action) => {
     if (userId === 'ext3-id') return;
     setUsers(users.map(u => {
       if (u.id === userId) {
         if (action === 'suspend') return { ...u, status: u.status === 'suspended' ? 'active' : 'suspended' };
         if (action === 'ban') return { ...u, status: u.status === 'banned' ? 'active' : 'banned' };
-        if (action === 'toggle_admin') {
-          const newRole = u.role === 'admin' ? 'user' : 'admin';
-          return { ...u, role: newRole, chat_role: newRole === 'admin' ? 'moderador' : 'miembro' };
-        }
       }
       return u;
     }));
@@ -341,13 +382,20 @@ export default function App() {
     }
   };
 
-  // Messaging System Actions
-  const handleClearChatHistory = (userId) => {
-    if (window.confirm(`¿Deseas vaciar todo el historial de conversaciones con este usuario?`)) {
+  // Clear Conversations / DMs
+  const handleClearChatHistory = (targetUserId) => {
+    if (window.confirm('¿Deseas vaciar todo el historial de conversaciones con este usuario?')) {
       setDirectMessages(directMessages.filter(dm => 
-        !(dm.sender_id === currentUser.id && dm.receiver_id === userId) &&
-        !(dm.sender_id === userId && dm.receiver_id === currentUser.id)
+        !(dm.sender_id === currentUser.id && dm.receiver_id === targetUserId) &&
+        !(dm.sender_id === targetUserId && dm.receiver_id === currentUser.id)
       ));
+    }
+  };
+
+  const handleClearAllConversations = () => {
+    if (window.confirm('¿Deseas vaciar TODO tu panel de mensajes con TODOS los usuarios?')) {
+      setDirectMessages(directMessages.filter(dm => dm.sender_id !== currentUser.id && dm.receiver_id !== currentUser.id));
+      setActiveDmUser(null);
     }
   };
 
@@ -369,37 +417,12 @@ export default function App() {
     setDmInput('');
   };
 
-  // Save Profile
-  const handleSaveProfile = (e) => {
-    e.preventDefault();
-    const updatedUser = {
-      ...currentUser,
-      fullName: editFullName,
-      headline: editHeadline,
-      bio: editBio,
-      location: editLocation,
-      website: editWebsite,
-      github: editGithub,
-      twitter: editTwitter,
-      avatar_url: editAvatarUrl,
-      banner_url: editBannerUrl
-    };
-    setCurrentUser(updatedUser);
-    setUsers(users.map(u => u.id === currentUser.id ? updatedUser : u));
-    setIsEditingProfile(false);
-  };
-
-  const handleProfileImgUpload = (e, type) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (type === 'avatar') setEditAvatarUrl(reader.result);
-        if (type === 'banner') setEditBannerUrl(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  // Filter users by strict username query for DM Panel
+  const filteredUsersForDm = users.filter(u => {
+    if (u.id === currentUser?.id) return false;
+    if (!dmSearchQuery.trim()) return true;
+    return u.username.toLowerCase().includes(dmSearchQuery.trim().toLowerCase());
+  });
 
   if (!currentUser) {
     return (
@@ -407,7 +430,7 @@ export default function App() {
         <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-[#161b23] border border-[#2a323d] p-8 rounded-2xl shadow-2xl">
           <div className="flex flex-col justify-center space-y-4">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">◈ Elraizer Community</h1>
-            <p className="text-[#8b97a8]">Comunidad, Marketplace, Mensajería y Panel Maestro.</p>
+            <p className="text-[#8b97a8]">Comunidad, Marketplace, Mensajería Directa y Panel Maestro.</p>
           </div>
           <div className="bg-[#1d242e] p-6 rounded-xl border border-[#2a323d] space-y-4">
             <div className="flex border-b border-[#2a323d] mb-4">
@@ -425,9 +448,6 @@ export default function App() {
       </div>
     );
   }
-
-  const myPostsCount = posts.filter(p => p.author_id === currentUser.id).length;
-  const myProductsCount = products.filter(p => p.seller_id === currentUser.id).length;
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#0e1116] text-[#e9eef5]' : 'bg-[#f4f6fb] text-[#0f172a]'}`}>
@@ -451,11 +471,33 @@ export default function App() {
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 bg-[#1d242e] rounded-xl border border-[#2a323d]">
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <button onClick={() => setCurrentUser(null)} className="p-2 bg-[#ff5470]/20 text-[#ff5470] rounded-xl border border-[#ff5470]/40">
+          <button onClick={() => {
+            setUsers(users.map(u => u.id === currentUser.id ? { ...u, isOnline: false } : u));
+            setCurrentUser(null);
+          }} className="p-2 bg-[#ff5470]/20 text-[#ff5470] rounded-xl border border-[#ff5470]/40">
             <LogOut size={18} />
           </button>
         </div>
       </header>
+
+      {/* SECCIÓN VISIBLE DEL PANEL PRINCIPAL: USUARIOS CONECTADOS Y CONTADOR ONLINE */}
+      <div className="bg-[#161b23] border-b border-[#2a323d] px-4 py-2.5">
+        <div className="max-w-4xl mx-auto flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2 text-[#00d4b1] font-bold">
+            <Wifi size={16} className="animate-pulse" />
+            <span>Usuarios Online ({onlineUsers.length})</span>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto py-1">
+            {onlineUsers.map(u => (
+              <div key={u.id} className="flex items-center gap-1.5 bg-[#1d242e] border border-[#2a323d] px-2.5 py-1 rounded-full text-[11px]">
+                <div className="w-2 h-2 rounded-full bg-[#00d4b1]"></div>
+                <span className="font-semibold text-white">@{u.username}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <nav className="sticky top-14 z-30 bg-[#161b23] border-b border-[#2a323d] flex justify-center gap-2 p-2 overflow-x-auto">
         <button onClick={() => setActiveTab('feed')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'feed' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🏠 Feed</button>
@@ -466,7 +508,7 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
-        {/* TAB FEED CON SUBIDA MULTIMEDIA FUNCIONAL */}
+        {/* TAB FEED */}
         {activeTab === 'feed' && (
           <div className="space-y-4">
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
@@ -477,7 +519,6 @@ export default function App() {
                 className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff] resize-none h-24"
               />
 
-              {/* ARCHIVOS ADJUNTOS PREVISUALIZACIÓN */}
               {postAttachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 p-2 bg-[#1d242e] rounded-xl border border-[#2a323d]">
                   {postAttachments.map(att => (
@@ -522,7 +563,7 @@ export default function App() {
                     </div>
                     <div>
                       <div className="font-semibold text-sm flex items-center gap-1">
-                        {p.author_name} <span className="text-[10px] bg-[#2a323d] px-2 py-0.5 rounded-full text-[#8b97a8]">{p.author_chat_role}</span>
+                        @{p.author_name} <span className="text-[10px] bg-[#2a323d] px-2 py-0.5 rounded-full text-[#8b97a8]">{p.author_chat_role}</span>
                       </div>
                       <div className="text-xs text-[#8b97a8]">{p.created_at}</div>
                     </div>
@@ -535,7 +576,6 @@ export default function App() {
                 </div>
                 <p className="text-sm leading-relaxed">{p.text}</p>
 
-                {/* ARCHIVOS ADJUNTOS EN LA PUBLICACION */}
                 {p.attachments && p.attachments.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                     {p.attachments.map(att => (
@@ -591,7 +631,7 @@ export default function App() {
                     <div className="p-4 space-y-2">
                       <div className="flex items-center gap-2 text-xs text-[#8b97a8]">
                         <div className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ backgroundColor: prod.seller_color }}>{prod.seller_name[0]}</div>
-                        <span>{prod.seller_name}</span>
+                        <span>@{prod.seller_name}</span>
                       </div>
                       <h3 className="font-bold text-sm text-[#e9eef5]">{prod.title}</h3>
                       <p className="text-xs text-[#8b97a8] line-clamp-2">{prod.description}</p>
@@ -619,7 +659,7 @@ export default function App() {
             <div className="flex-1 p-4 overflow-y-auto space-y-3">
               {chatMessages.map(m => (
                 <div key={m.id} className={`flex flex-col ${m.user_id === currentUser.id ? 'items-end' : 'items-start'}`}>
-                  <div className="text-[10px] text-[#8b97a8] mb-1">{m.user_name} ({m.chat_role})</div>
+                  <div className="text-[10px] text-[#8b97a8] mb-1">@{m.user_name} ({m.chat_role})</div>
                   <div className={`p-3 rounded-2xl max-w-xs text-sm ${m.user_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>
                     {m.text}
                   </div>
@@ -634,10 +674,9 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MENSAJERÍA PROFESIONAL DE BANDEJAS */}
+        {/* TAB MENSAJERÍA CON BÚSQUEDA POR USUARIO Y VACIADO TOTAL */}
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
-            {/* LISTA DE CONTACTOS Y BANDEJAS */}
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-3 flex flex-col">
               <div className="flex border-b border-[#2a323d] pb-2 gap-1">
                 <button onClick={() => setDmFolder('inbox')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg flex items-center justify-center gap-1 ${dmFolder === 'inbox' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] bg-[#1d242e]'}`}>
@@ -648,19 +687,38 @@ export default function App() {
                 </button>
               </div>
 
+              {/* BÚSQUEDA STRICTA POR USUARIO */}
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-2.5 text-[#8b97a8]" />
+                <input
+                  type="text"
+                  value={dmSearchQuery}
+                  onChange={(e) => setDmSearchQuery(e.target.value)}
+                  placeholder="Buscar por usuario (ej: @EXT3)..."
+                  className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                />
+              </div>
+
+              <div className="flex justify-between items-center px-1">
+                <h3 className="text-[10px] font-bold text-[#8b97a8] uppercase">Conversaciones</h3>
+                <button onClick={handleClearAllConversations} className="text-[10px] text-[#ff5470] hover:underline font-bold flex items-center gap-0.5">
+                  <Trash2 size={12} /> Vaciar Todo
+                </button>
+              </div>
+
               <div className="flex-1 overflow-y-auto space-y-2">
-                <h3 className="text-[10px] font-bold text-[#8b97a8] uppercase px-1">Seleccionar Conversación</h3>
-                {users.filter(u => u.id !== currentUser.id).map(u => {
+                {filteredUsersForDm.map(u => {
                   const msgsCount = directMessages.filter(m => (m.sender_id === currentUser.id && m.receiver_id === u.id) || (m.sender_id === u.id && m.receiver_id === currentUser.id)).length;
                   return (
                     <button key={u.id} onClick={() => setActiveDmUser(u)} className={`w-full text-left p-2.5 rounded-xl border flex items-center justify-between transition-all ${activeDmUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] hover:bg-[#2a323d]'}`}>
                       <div className="flex items-center gap-2 truncate">
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: u.avatar_color }}>
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs relative" style={{ backgroundColor: u.avatar_color }}>
                           {u.username[0]}
+                          {u.isOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00d4b1] border-2 border-[#161b23] rounded-full"></span>}
                         </div>
                         <div className="truncate">
-                          <div className="font-semibold text-xs text-white">{u.username}</div>
-                          <div className="text-[10px] text-[#8b97a8] truncate">{u.headline || u.email}</div>
+                          <div className="font-semibold text-xs text-white">@{u.username}</div>
+                          <div className="text-[10px] text-[#8b97a8] truncate">{u.email}</div>
                         </div>
                       </div>
                       {msgsCount > 0 && <span className="bg-[#7c5cff]/40 text-[#a78bfa] text-[10px] px-2 py-0.5 rounded-full font-bold">{msgsCount}</span>}
@@ -670,7 +728,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* CHAT PRIVADO PROFESIONAL Y VACIADO DE BANDEJA */}
             <div className="md:col-span-2 bg-[#161b23] border border-[#2a323d] rounded-xl flex flex-col">
               {activeDmUser ? (
                 <>
@@ -680,7 +737,10 @@ export default function App() {
                         {activeDmUser.username[0]}
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-white">{activeDmUser.username}</div>
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          @{activeDmUser.username}
+                          {activeDmUser.isOnline && <span className="text-[9px] text-[#00d4b1] bg-[#00d4b1]/10 px-1.5 rounded">online</span>}
+                        </div>
                         <div className="text-[10px] text-[#8b97a8]">{activeDmUser.email}</div>
                       </div>
                     </div>
@@ -709,13 +769,13 @@ export default function App() {
                   </div>
 
                   <div className="p-3 border-t border-[#2a323d] flex gap-2">
-                    <input type="text" value={dmInput} onChange={(e) => setDmInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendDm()} placeholder={`Enviar mensaje a ${activeDmUser.username}...`} className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff]" />
+                    <input type="text" value={dmInput} onChange={(e) => setDmInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendDm()} placeholder={`Enviar mensaje privado a @${activeDmUser.username}...`} className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff]" />
                     <button onClick={handleSendDm} className="p-2 bg-[#7c5cff] text-white rounded-xl"><Send size={18} /></button>
                   </div>
                 </>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-[#8b97a8] text-sm">
-                  Selecciona una conversación a la izquierda para ver los mensajes.
+                  Busca y selecciona un usuario por su @usuario a la izquierda.
                 </div>
               )}
             </div>
@@ -743,7 +803,7 @@ export default function App() {
         )}
       </main>
 
-      {/* PANEL MAESTRO PROFESIONAL COMPLETO */}
+      {/* PANEL MAESTRO */}
       {showAdminModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#ffb020]/40 text-[#e9eef5] rounded-2xl max-w-4xl w-full p-6 space-y-6 shadow-2xl relative max-h-[90vh] flex flex-col">
@@ -752,13 +812,12 @@ export default function App() {
             <div className="flex items-center gap-3 border-b border-[#2a323d] pb-4">
               <Crown size={28} className="text-[#ffb020]" />
               <div>
-                <h3 className="text-xl font-bold text-white">Panel Maestro de Administración General</h3>
-                <p className="text-xs text-[#8b97a8]">Control absoluto de usuarios, publicaciones, productos, bloqueos y eliminaciones de cuenta.</p>
+                <h3 className="text-xl font-bold text-white">Panel Maestro de Administración</h3>
+                <p className="text-xs text-[#8b97a8]">Gestión total de usuarios, ventas, publicaciones y bloqueos.</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 overflow-hidden">
-              {/* COLUMNA IZQUIERDA: LISTA DE USUARIOS */}
               <div className="bg-[#1d242e] p-3 rounded-xl border border-[#2a323d] flex flex-col h-full overflow-hidden">
                 <h4 className="text-xs font-bold text-[#8b97a8] uppercase mb-2">Usuarios Registrados ({users.length})</h4>
                 <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -766,7 +825,7 @@ export default function App() {
                     <button key={u.id} onClick={() => setSelectedAdminUser(u)} className={`w-full text-left p-2.5 rounded-xl border flex items-center justify-between ${selectedAdminUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#161b23] border-[#2a323d]'}`}>
                       <div className="truncate">
                         <div className="font-semibold text-xs text-white flex items-center gap-1">
-                          {u.username}
+                          @{u.username}
                           {u.status === 'suspended' && <span className="bg-[#ffb020]/20 text-[#ffb020] text-[8px] px-1 rounded">SUSP</span>}
                           {u.status === 'banned' && <span className="bg-[#ff5470]/20 text-[#ff5470] text-[8px] px-1 rounded">BAN</span>}
                         </div>
@@ -778,20 +837,18 @@ export default function App() {
                 </div>
               </div>
 
-              {/* COLUMNA DERECHA: EXPEDIENTE COMPLETO DEL USUARIO */}
               <div className="md:col-span-2 bg-[#1d242e] p-4 rounded-xl border border-[#2a323d] flex flex-col h-full overflow-y-auto space-y-4">
                 {selectedAdminUser ? (
                   <>
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[#2a323d] pb-3">
                       <div>
                         <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                          {selectedAdminUser.username}
+                          @{selectedAdminUser.username}
                           <span className="text-xs bg-[#7c5cff]/20 text-[#a78bfa] px-2 py-0.5 rounded-full">{selectedAdminUser.role}</span>
                         </h4>
                         <p className="text-xs text-[#8b97a8]">{selectedAdminUser.email} · Registrado: {selectedAdminUser.joinedDate}</p>
                       </div>
 
-                      {/* ACCIONES DE CONTROL TOTAL */}
                       {selectedAdminUser.id !== 'ext3-id' && (
                         <div className="flex flex-wrap gap-2">
                           <button onClick={() => handleAdminUserAction(selectedAdminUser.id, 'suspend')} className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${selectedAdminUser.status === 'suspended' ? 'bg-[#00d4b1]/20 border-[#00d4b1] text-[#00d4b1]' : 'bg-[#ffb020]/20 border-[#ffb020] text-[#ffb020]'}`}>
@@ -807,7 +864,6 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* PUBLICACIONES DEL USUARIO */}
                     <div className="space-y-2">
                       <h5 className="text-xs font-bold uppercase text-[#7c5cff]">Publicaciones en el Feed</h5>
                       <div className="space-y-2 max-h-40 overflow-y-auto">
@@ -820,7 +876,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* PRODUCTOS PUBLICADOS Y VENDIDOS */}
                     <div className="space-y-2">
                       <h5 className="text-xs font-bold uppercase text-[#00d4b1]">Productos Publicados / Vendidos</h5>
                       <div className="space-y-2 max-h-40 overflow-y-auto">
@@ -855,7 +910,7 @@ export default function App() {
               <h3 className="font-bold text-sm">Editar Datos de Perfil</h3>
               <button onClick={() => setIsEditingProfile(false)}><X size={18} /></button>
             </div>
-            <form onSubmit={handleSaveProfile} className="space-y-3">
+            <form onSubmit={(e) => { e.preventDefault(); setIsEditingProfile(false); }} className="space-y-3">
               <input type="text" value={editFullName} onChange={(e) => setEditFullName(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs" placeholder="Nombre completo" />
               <input type="text" value={editHeadline} onChange={(e) => setEditHeadline(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs" placeholder="Titular profesional" />
               <textarea value={editBio} onChange={(e) => setEditBio(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs resize-none" placeholder="Biografía" rows="3" />
@@ -865,23 +920,37 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL CARRITO DE COMPRAS */}
+      {/* MODAL CARRITO / MÉTODO DE PAGO CON MENSAJE DIRECTO AL VENDEDOR */}
       {showCartModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#2a323d] text-[#e9eef5] rounded-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between items-center border-b border-[#2a323d] pb-2">
-              <h3 className="font-bold text-sm">Carrito de Compras</h3>
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <ShoppingCart size={18} className="text-[#00d4b1]" /> Carrito & Acuerdo de Pago Directo
+              </h3>
               <button onClick={() => setShowCartModal(false)}><X size={18} /></button>
             </div>
             {cart.length === 0 ? <p className="text-xs text-[#8b97a8] text-center py-6">Tu carrito está vacío.</p> : (
-              <div className="space-y-2">
-                {cart.map(item => (
-                  <div key={item.id} className="flex justify-between items-center bg-[#1d242e] p-2.5 rounded-xl border border-[#2a323d] text-xs">
-                    <span>{item.title}</span>
-                    <span className="font-bold text-[#00d4b1]">${item.price}</span>
-                  </div>
-                ))}
-                <button onClick={() => { setOrderSuccess(true); setTimeout(() => { setCart([]); setOrderSuccess(false); setShowCartModal(false); }, 1500); }} className="w-full bg-[#00d4b1] text-slate-950 font-bold py-2.5 rounded-xl text-xs mt-2">Procesar Pago</button>
+              <div className="space-y-3">
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {cart.map(item => (
+                    <div key={item.id} className="flex justify-between items-center bg-[#1d242e] p-2.5 rounded-xl border border-[#2a323d] text-xs">
+                      <div>
+                        <span className="font-bold text-white block">{item.title}</span>
+                        <span className="text-[10px] text-[#8b97a8]">Vendedor: @{item.seller_name}</span>
+                      </div>
+                      <span className="font-bold text-[#00d4b1]">${item.price.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-3 bg-[#00d4b1]/10 border border-[#00d4b1]/30 rounded-xl text-xs text-[#00d4b1]">
+                  Al procesar el pago, se creará automáticamente un <strong>mensaje directo privado</strong> con el vendedor para acuerden la transferencia (Nequi, Crypto, Paypal, etc.) y la entrega.
+                </div>
+
+                <button onClick={handleCheckout} className="w-full bg-gradient-to-r from-[#00d4b1] to-[#7c5cff] text-slate-950 font-bold py-2.5 rounded-xl text-xs shadow-lg flex items-center justify-center gap-2">
+                  <MessageCircle size={16} /> Contactar Vendedor y Procesar Pago
+                </button>
               </div>
             )}
           </div>
