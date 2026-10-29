@@ -196,7 +196,7 @@ export default function App() {
   // Navigation
   const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
-  const [dmFolder, setDmFolder] = useState('inbox');
+  const [dmFolder, setDmFolder] = useState('all'); // 'all' muestra todos los mensajes con el usuario sin filtrar indebidamente
   const [dmSearchQuery, setDmSearchQuery] = useState('');
 
   // Modals
@@ -483,17 +483,20 @@ export default function App() {
     setDirectMessages(directMessages.filter(dm => dm.id !== dmId));
   };
 
+  // FIX CRÍTICO: Envío de mensajes garantizado
   const handleSendDm = () => {
     if (!dmInput.trim() || !currentUser || !activeDmUser) return;
+    
     const dm = {
-      id: 'dm_' + Date.now(),
+      id: 'dm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       sender_id: currentUser.id,
       receiver_id: activeDmUser.id,
       text: dmInput.trim(),
       created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       read: false
     };
-    setDirectMessages([...directMessages, dm]);
+
+    setDirectMessages(prevMessages => [...prevMessages, dm]);
     setDmInput('');
   };
 
@@ -525,7 +528,6 @@ export default function App() {
             </div>
             {authError && <div className="p-3 bg-[#ff5470]/10 border border-[#ff5470] text-[#ff5470] rounded-xl text-xs">{authError}</div>}
             <form onSubmit={authTab === 'login' ? handleLogin : handleRegister} className="space-y-4">
-              {/* PLACEHOLDER SIN EL TEXTO EXT3 */}
               <input type="text" required value={identifier} onChange={(e) => setIdentifier(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]" placeholder="Ingresa tu email o usuario" />
               <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]" placeholder="••••••••" />
               <button type="submit" className="w-full bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white py-3 rounded-xl font-bold text-sm shadow-lg">{authTab === 'login' ? 'Entrar a Elraizer' : 'Crear mi cuenta'}</button>
@@ -543,7 +545,6 @@ export default function App() {
           ◈ Elraizer Community
         </div>
         <div className="flex items-center gap-3">
-          {/* PUNTOS RESTANTES DEL USUARIO */}
           <div className="hidden sm:flex items-center gap-1.5 bg-[#1d242e] border border-[#7c5cff]/40 px-3 py-1.5 rounded-xl text-xs">
             <AwardIcon size={16} className="text-[#ffb020]" />
             <span className="font-bold text-white">{currentUser.points} Pts</span>
@@ -574,7 +575,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* SECCIÓN VISIBLE DEL PANEL PRINCIPAL: USUARIOS CONECTADOS Y CONTADOR ONLINE */}
+      {/* SECCIÓN VISIBLE DEL PANEL PRINCIPAL: USUARIOS CONECTADOS */}
       <div className="bg-[#161b23] border-b border-[#2a323d] px-4 py-2.5">
         <div className="max-w-4xl mx-auto flex items-center justify-between text-xs">
           <div className="flex items-center gap-2 text-[#00d4b1] font-bold">
@@ -602,7 +603,7 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
-        {/* TAB FEED CON BOTÓN PARA DAR CANTIDAD DE PUNTOS DENTRO DEL RECUADRO */}
+        {/* TAB FEED */}
         {activeTab === 'feed' && (
           <div className="space-y-4">
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
@@ -691,7 +692,6 @@ export default function App() {
                     <span className="font-bold text-[#ffb020] flex items-center gap-1"><AwardIcon size={14} /> {p.votes} Puntos Acumulados</span>
                   </div>
 
-                  {/* ABRIR RECUADRO DE PUNTOS */}
                   <button onClick={() => { setPointsModalPost(p); setPointsToGiveInput(''); setPointsError(''); }} className="px-3 py-1.5 bg-[#ffb020]/20 hover:bg-[#ffb020]/30 text-[#ffb020] border border-[#ffb020]/40 rounded-xl font-bold flex items-center gap-1.5 transition-all">
                     <Gift size={14} /> Dar Puntos
                   </button>
@@ -773,11 +773,14 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MENSAJERÍA CON BOTONES DIRECTOS PARA FIJAR Y ELIMINAR CONVERSACIONES EN LA LISTA */}
+        {/* TAB MENSAJERÍA DIRECTA CON FILTRADO Y ENVÍO REPARADO */}
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-3 flex flex-col">
               <div className="flex border-b border-[#2a323d] pb-2 gap-1">
+                <button onClick={() => setDmFolder('all')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg flex items-center justify-center gap-1 ${dmFolder === 'all' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] bg-[#1d242e]'}`}>
+                  <MessageSquare size={14} /> Todos
+                </button>
                 <button onClick={() => setDmFolder('inbox')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg flex items-center justify-center gap-1 ${dmFolder === 'inbox' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] bg-[#1d242e]'}`}>
                   <Inbox size={14} /> Recibidos
                 </button>
@@ -792,7 +795,7 @@ export default function App() {
                   type="text"
                   value={dmSearchQuery}
                   onChange={(e) => setDmSearchQuery(e.target.value)}
-                  placeholder="Buscar por usuario (ej: @DevUser)..."
+                  placeholder="Buscar usuario..."
                   className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-[#7c5cff]"
                 />
               </div>
@@ -804,11 +807,9 @@ export default function App() {
                 </button>
               </div>
 
-              {/* LISTA DE CONVERSACIONES CON BOTONES PARA FIJAR Y ELIMINAR CADA CONVERSACIÓN */}
               <div className="flex-1 overflow-y-auto space-y-2">
                 {filteredUsersForDm.map(u => {
                   const isPinned = pinnedUserIds.includes(u.id);
-                  const msgsCount = directMessages.filter(m => (m.sender_id === currentUser.id && m.receiver_id === u.id) || (m.sender_id === u.id && m.receiver_id === currentUser.id)).length;
 
                   return (
                     <div
@@ -831,19 +832,17 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center gap-1">
-                        {/* BOTÓN FIJAR CONVERSACIÓN */}
                         <button
                           onClick={(e) => togglePinConversation(u.id, e)}
-                          title={isPinned ? 'Desfijar conversación' : 'Fijar conversación al inicio'}
+                          title={isPinned ? 'Desfijar conversación' : 'Fijar conversación'}
                           className={`p-1.5 rounded-lg transition-colors ${isPinned ? 'text-[#ffb020] bg-[#ffb020]/20' : 'text-[#8b97a8] hover:text-[#ffb020] hover:bg-[#2a323d]'}`}
                         >
                           <Pin size={13} className={isPinned ? 'fill-[#ffb020]' : ''} />
                         </button>
 
-                        {/* BOTÓN ELIMINAR CONVERSACIÓN DIRECTO */}
                         <button
                           onClick={(e) => handleClearChatHistory(u.id, e)}
-                          title="Eliminar esta conversación"
+                          title="Eliminar conversación"
                           className="p-1.5 text-[#ff5470] hover:bg-[#ff5470]/20 rounded-lg transition-colors"
                         >
                           <Trash2 size={13} />
@@ -873,36 +872,68 @@ export default function App() {
                     </div>
 
                     <button onClick={(e) => handleClearChatHistory(activeDmUser.id, e)} className="px-2.5 py-1 bg-[#ff5470]/20 text-[#ff5470] border border-[#ff5470]/30 hover:bg-[#ff5470]/30 rounded-lg text-xs font-semibold flex items-center gap-1">
-                      <Trash2 size={14} /> Vaciar Bandeja
+                      <Trash2 size={14} /> Vaciar Conversación
                     </button>
                   </div>
 
+                  {/* VISUALIZACIÓN DE MENSAJES CORREGIDA */}
                   <div className="flex-1 p-4 overflow-y-auto space-y-3">
                     {directMessages.filter(dm => {
-                      if (dmFolder === 'inbox') return dm.sender_id === activeDmUser.id && dm.receiver_id === currentUser.id;
-                      if (dmFolder === 'sent') return dm.sender_id === currentUser.id && dm.receiver_id === activeDmUser.id;
-                      return (dm.sender_id === currentUser.id && dm.receiver_id === activeDmUser.id) || (dm.sender_id === activeDmUser.id && dm.receiver_id === currentUser.id);
-                    }).map(dm => (
-                      <div key={dm.id} className={`flex flex-col group ${dm.sender_id === currentUser.id ? 'items-end' : 'items-start'}`}>
-                        <div className="flex items-center gap-1">
-                          <div className={`p-3 rounded-2xl max-w-xs text-sm ${dm.sender_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>
-                            {dm.text}
-                          </div>
-                          <button onClick={() => handleDeleteSingleDm(dm.id)} className="opacity-0 group-hover:opacity-100 p-1 text-[#ff5470] hover:bg-[#ff5470]/20 rounded transition-all"><X size={12} /></button>
-                        </div>
-                        <div className="text-[9px] text-[#8b97a8] mt-1">{dm.created_at}</div>
+                      const isBetweenTheseTwo = 
+                        (dm.sender_id === currentUser.id && dm.receiver_id === activeDmUser.id) ||
+                        (dm.sender_id === activeDmUser.id && dm.receiver_id === currentUser.id);
+
+                      if (!isBetweenTheseTwo) return false;
+
+                      if (dmFolder === 'inbox') return dm.sender_id === activeDmUser.id;
+                      if (dmFolder === 'sent') return dm.sender_id === currentUser.id;
+                      return true; // Folder 'all'
+                    }).length === 0 ? (
+                      <div className="text-center text-xs text-[#8b97a8] py-8">
+                        No hay mensajes registrados. ¡Escribe el primer mensaje a continuación!
                       </div>
-                    ))}
+                    ) : (
+                      directMessages.filter(dm => {
+                        const isBetweenTheseTwo = 
+                          (dm.sender_id === currentUser.id && dm.receiver_id === activeDmUser.id) ||
+                          (dm.sender_id === activeDmUser.id && dm.receiver_id === currentUser.id);
+
+                        if (!isBetweenTheseTwo) return false;
+
+                        if (dmFolder === 'inbox') return dm.sender_id === activeDmUser.id;
+                        if (dmFolder === 'sent') return dm.sender_id === currentUser.id;
+                        return true;
+                      }).map(dm => (
+                        <div key={dm.id} className={`flex flex-col group ${dm.sender_id === currentUser.id ? 'items-end' : 'items-start'}`}>
+                          <div className="flex items-center gap-1">
+                            <div className={`p-3 rounded-2xl max-w-xs text-sm ${dm.sender_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>
+                              {dm.text}
+                            </div>
+                            <button onClick={() => handleDeleteSingleDm(dm.id)} className="opacity-0 group-hover:opacity-100 p-1 text-[#ff5470] hover:bg-[#ff5470]/20 rounded transition-all"><X size={12} /></button>
+                          </div>
+                          <div className="text-[9px] text-[#8b97a8] mt-1">{dm.created_at}</div>
+                        </div>
+                      ))
+                    )}
                   </div>
 
-                  <div className="p-3 border-t border-[#2a323d] flex gap-2">
-                    <input type="text" value={dmInput} onChange={(e) => setDmInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendDm()} placeholder={`Enviar mensaje privado a @${activeDmUser.username}...`} className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff]" />
-                    <button onClick={handleSendDm} className="p-2 bg-[#7c5cff] text-white rounded-xl"><Send size={18} /></button>
-                  </div>
+                  {/* FORMULARIO DE ENVÍO DE MENSAJES */}
+                  <form onSubmit={(e) => { e.preventDefault(); handleSendDm(); }} className="p-3 border-t border-[#2a323d] flex gap-2">
+                    <input 
+                      type="text" 
+                      value={dmInput} 
+                      onChange={(e) => setDmInput(e.target.value)} 
+                      placeholder={`Enviar mensaje privado a @${activeDmUser.username}...`} 
+                      className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff]" 
+                    />
+                    <button type="submit" className="p-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white rounded-xl transition-all">
+                      <Send size={18} />
+                    </button>
+                  </form>
                 </>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-[#8b97a8] text-sm">
-                  Busca y selecciona un usuario por su @usuario a la izquierda.
+                  Busca y selecciona un usuario de la lista izquierda para chatear.
                 </div>
               )}
             </div>
@@ -930,7 +961,7 @@ export default function App() {
         )}
       </main>
 
-      {/* RECUADRO / MODAL PARA OTORGAR CANTIDAD PERSONALIZADA DE PUNTOS */}
+      {/* RECUADRO PARA OTORGAR PUNTOS */}
       {pointsModalPost && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#ffb020]/50 text-[#e9eef5] rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative">
