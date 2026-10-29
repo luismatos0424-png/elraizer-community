@@ -3,7 +3,8 @@ import {
   Shield, Corona, Moon, Sun, Bell, ShoppingCart, User, LogOut, MessageSquare,
   Send, Plus, ThumbsUp, Star, Trash2, Pin, VolumeX, Ban, UserCheck, ShieldAlert,
   Search, ExternalLink, Image, Video, Paperclip, Smile, Check, X, Tag, RefreshCw,
-  ShoppingBag, Lock, UserX, AlertTriangle, ChevronRight, Award, MessageCircle, Mail
+  ShoppingBag, Lock, UserX, AlertTriangle, ChevronRight, Award, MessageCircle, Mail,
+  DollarSign, Package, CheckCircle2
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
@@ -11,24 +12,65 @@ const AVATAR_COLORS = [
   '#3b82f6', '#10b981', '#ec4899', '#8b5cf6'
 ];
 
-// Base de datos limpia: SOLO la cuenta maestra EXT3
+// Base de datos limpia con la contraseña exacta para la cuenta maestra
 const INITIAL_USERS = [
-  { id: 'ext3-id', email: 'ext3@elraizer.com', username: 'EXT3', bio: 'Cuenta maestra · Fundador de Elraizer Community', avatar_color: '#ffb020', role: 'admin', chat_role: 'master', points: 1250, points_given: 0, suspended: false }
+  { 
+    id: 'ext3-id', 
+    email: 'ext3@elraizer.com', 
+    username: 'EXT3', 
+    password: 'Elraizer5374e*', 
+    bio: 'Cuenta maestra · Fundador de Elraizer Community', 
+    avatar_color: '#ffb020', 
+    role: 'admin', 
+    chat_role: 'master', 
+    points: 1250, 
+    points_given: 0, 
+    suspended: false 
+  }
 ];
 
 const INITIAL_POSTS = [
   { id: 'p1', author_id: 'ext3-id', author_name: 'EXT3', author_color: '#ffb020', author_chat_role: 'master', text: '¡Bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y envía mensajes privados.', tags: ['bienvenida', 'comunidad', 'anuncio'], media: [], votes: 42, created_at: 'Hace 2 horas' }
 ];
 
+const INITIAL_PRODUCTS = [
+  {
+    id: 'prod_1',
+    title: 'Kit de Scripts Automation Tampermonkey',
+    description: 'Pack de scripts utilitarios en JavaScript para automatizar tareas web y scraping básico.',
+    price: 25.00,
+    category: 'Software',
+    seller_id: 'ext3-id',
+    seller_name: 'EXT3',
+    seller_color: '#ffb020',
+    image: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&auto=format&fit=crop&q=80',
+    rating: 4.9,
+    sales: 18,
+    created_at: 'Ayer'
+  },
+  {
+    id: 'prod_2',
+    title: 'Plantilla Premium Single-Page WebView',
+    description: 'Diseño responsive ultrafino optimizado para portales comunitarios y paneles e-commerce.',
+    price: 45.00,
+    category: 'Plantillas',
+    seller_id: 'ext3-id',
+    seller_name: 'EXT3',
+    seller_color: '#ffb020',
+    image: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=600&auto=format&fit=crop&q=80',
+    rating: 5.0,
+    sales: 24,
+    created_at: 'Hace 3 días'
+  }
+];
+
 export default function App() {
   const [theme, setTheme] = useState('dark');
   const [currentUser, setCurrentUser] = useState(null);
-  const [showGoogleModal, setShowGoogleModal] = useState(false);
-  const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
 
   // Auth states
   const [authTab, setAuthTab] = useState('login');
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState(''); // Puede ser usuario o correo
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
@@ -41,6 +83,16 @@ export default function App() {
   const [posts, setPosts] = useState(() => {
     const saved = localStorage.getItem('elraizer_posts');
     return saved ? JSON.parse(saved) : INITIAL_POSTS;
+  });
+
+  const [products, setProducts] = useState(() => {
+    const saved = localStorage.getItem('elraizer_products');
+    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+  });
+
+  const [cart, setCart] = useState(() => {
+    const saved = localStorage.getItem('elraizer_cart');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [chatMessages, setChatMessages] = useState(() => {
@@ -58,12 +110,22 @@ export default function App() {
   // Navigation states
   const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
+  const [showCartModal, setShowCartModal] = useState(false);
+  const [showSellModal, setShowSellModal] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState(false);
 
   // Inputs
   const [newPostText, setNewPostText] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+
+  // Form Venta Producto
+  const [prodTitle, setProdTitle] = useState('');
+  const [prodPrice, setProdPrice] = useState('');
+  const [prodCategory, setProdCategory] = useState('Digital');
+  const [prodDesc, setProdDesc] = useState('');
+  const [prodImage, setProdImage] = useState('');
 
   useEffect(() => {
     localStorage.setItem('elraizer_users', JSON.stringify(users));
@@ -72,6 +134,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('elraizer_posts', JSON.stringify(posts));
   }, [posts]);
+
+  useEffect(() => {
+    localStorage.setItem('elraizer_products', JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem('elraizer_cart', JSON.stringify(cart));
+  }, [cart]);
 
   useEffect(() => {
     localStorage.setItem('elraizer_chat', JSON.stringify(chatMessages));
@@ -84,34 +154,66 @@ export default function App() {
   const handleLogin = (e) => {
     e.preventDefault();
     setAuthError('');
-    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+
+    const inputClean = identifier.trim().toLowerCase();
+
+    // Buscar coincidencia por correo O por nombre de usuario
+    const found = users.find(u => 
+      u.email.toLowerCase() === inputClean || 
+      u.username.toLowerCase() === inputClean
+    );
+
     if (found) {
       if (found.suspended) {
         setAuthError('Esta cuenta ha sido suspendida por la administración.');
         return;
       }
+      
+      // Validar contraseña
+      if (found.password && found.password !== password) {
+        setAuthError('La contraseña ingresada es incorrecta.');
+        return;
+      }
+
       setCurrentUser(found);
     } else {
-      setAuthError('Correo o contraseña incorrectos. Si no tienes cuenta, regístrate.');
+      setAuthError('Usuario o correo no encontrado. Verifique sus datos o regístrese.');
     }
   };
 
   const handleRegister = (e) => {
     e.preventDefault();
     setAuthError('');
-    if (!email || !password) {
+
+    if (!identifier || !password) {
       setAuthError('Completa todos los campos para registrarte.');
       return;
     }
-    const exists = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (exists) {
-      setAuthError('Ya existe una cuenta con este correo electrónico.');
+
+    const inputClean = identifier.trim().toLowerCase();
+
+    // Bloquear registro si intenta usar credenciales reservadas de la cuenta maestra
+    if (inputClean === 'ext3' || inputClean === 'ext3@elraizer.com') {
+      setAuthError('Este usuario / correo está reservado para la cuenta maestra.');
       return;
     }
+
+    const exists = users.find(u => 
+      u.email.toLowerCase() === inputClean || 
+      u.username.toLowerCase() === inputClean
+    );
+
+    if (exists) {
+      setAuthError('Ya existe una cuenta con este usuario o correo electrónico.');
+      return;
+    }
+
+    const isEmail = inputClean.includes('@');
     const newUser = {
       id: 'usr_' + Date.now(),
-      email: email.toLowerCase(),
-      username: email.split('@')[0],
+      email: isEmail ? inputClean : `${inputClean}@elraizer.com`,
+      username: isEmail ? inputClean.split('@')[0] : identifier.trim(),
+      password: password,
       avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
       bio: 'Miembro de Elraizer Community 🚀',
       role: 'user',
@@ -120,35 +222,61 @@ export default function App() {
       points_given: 0,
       suspended: false
     };
+
     setUsers([...users, newUser]);
     setCurrentUser(newUser);
   };
 
-  const handleSelectGoogleAccount = (googleAccount) => {
-    setGoogleAuthLoading(true);
+  const addToCart = (product) => {
+    const existing = cart.find(item => item.id === product.id);
+    if (existing) {
+      setCart(cart.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item));
+    } else {
+      setCart([...cart, { ...product, qty: 1 }]);
+    }
+  };
+
+  const removeFromCart = (id) => {
+    setCart(cart.filter(item => item.id !== id));
+  };
+
+  const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+
+  const handlePublishProduct = (e) => {
+    e.preventDefault();
+    if (!prodTitle || !prodPrice || !prodDesc) return;
+
+    const newProd = {
+      id: 'prod_' + Date.now(),
+      title: prodTitle,
+      price: parseFloat(prodPrice),
+      category: prodCategory,
+      description: prodDesc,
+      seller_id: currentUser.id,
+      seller_name: currentUser.username,
+      seller_color: currentUser.avatar_color,
+      image: prodImage || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80',
+      rating: 5.0,
+      sales: 0,
+      created_at: 'Ahora mismo'
+    };
+
+    setProducts([newProd, ...products]);
+    setProdTitle('');
+    setProdPrice('');
+    setProdDesc('');
+    setProdImage('');
+    setShowSellModal(false);
+  };
+
+  const handleCheckout = () => {
+    if (cart.length === 0) return;
+    setOrderSuccess(true);
     setTimeout(() => {
-      const existing = users.find(u => u.email.toLowerCase() === googleAccount.email.toLowerCase());
-      if (existing) {
-        setCurrentUser(existing);
-      } else {
-        const newGUser = {
-          id: 'usr_' + Date.now(),
-          email: googleAccount.email,
-          username: googleAccount.name,
-          avatar_color: googleAccount.color,
-          bio: 'Conectado con cuenta Google 🌐',
-          role: 'user',
-          chat_role: 'nuevo',
-          points: 10,
-          points_given: 0,
-          suspended: false
-        };
-        setUsers(prev => [...prev, newGUser]);
-        setCurrentUser(newGUser);
-      }
-      setGoogleAuthLoading(false);
-      setShowGoogleModal(false);
-    }, 600);
+      setCart([]);
+      setOrderSuccess(false);
+      setShowCartModal(false);
+    }, 2000);
   };
 
   const handleSendChat = () => {
@@ -194,7 +322,7 @@ export default function App() {
               </div>
               <div className="flex items-center gap-3 bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">
                 <ShoppingBag className="text-[#00d4b1]" size={20} />
-                <span>Marketplace de productos y servicios digitales</span>
+                <span>Marketplace de productos, servicios y carrito de compras</span>
               </div>
               <div className="flex items-center gap-3 bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">
                 <Award className="text-[#ffb020]" size={20} />
@@ -221,16 +349,16 @@ export default function App() {
 
             {authError && <div className="p-3 bg-[#ff5470]/10 border border-[#ff5470] text-[#ff5470] rounded-xl text-xs">{authError}</div>}
 
-            <form onSubmit={authTab === 'login' ? handleLogin : handleRegister} className="space-y-3">
+            <form onSubmit={authTab === 'login' ? handleLogin : handleRegister} className="space-y-4">
               <div>
-                <label className="text-xs text-[#8b97a8] block mb-1">Correo Electrónico</label>
+                <label className="text-xs text-[#8b97a8] block mb-1">Usuario o Correo Electrónico</label>
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]"
-                  placeholder="tuemail@ejemplo.com"
+                  placeholder="EXT3 o tuemail@ejemplo.com"
                 />
               </div>
               <div>
@@ -247,89 +375,13 @@ export default function App() {
 
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:opacity-95 transition-all"
+                className="w-full bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:opacity-95 transition-all mt-2"
               >
                 {authTab === 'login' ? 'Entrar a Elraizer' : 'Crear mi cuenta'}
               </button>
             </form>
-
-            <div className="relative my-4 text-center text-xs text-[#8b97a8]">
-              <span className="bg-[#1d242e] px-2 relative z-10">O continúa con</span>
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#2a323d]"></div></div>
-            </div>
-
-            <button
-              onClick={() => setShowGoogleModal(true)}
-              type="button"
-              className="w-full bg-[#161b23] hover:bg-[#2a323d] border border-[#2a323d] py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-              </svg>
-              Continuar con Google
-            </button>
           </div>
         </div>
-
-        {/* MODAL GOOGLE AUTH */}
-        {showGoogleModal && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white text-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-5 shadow-2xl relative">
-              <button 
-                onClick={() => setShowGoogleModal(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              >
-                <X size={20} />
-              </button>
-
-              <div className="text-center space-y-2">
-                <svg className="w-8 h-8 mx-auto" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                </svg>
-                <h3 className="text-lg font-bold text-slate-900">Iniciar sesión con Google</h3>
-                <p className="text-xs text-slate-500">Selecciona una cuenta para ir a <span className="font-semibold text-slate-800">Elraizer Community</span></p>
-              </div>
-
-              {googleAuthLoading ? (
-                <div className="py-8 flex flex-col items-center justify-center space-y-3">
-                  <RefreshCw className="animate-spin text-[#7c5cff]" size={28} />
-                  <span className="text-xs text-slate-500">Iniciando sesión de forma segura...</span>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {[
-                    { name: 'Usuario Google', email: 'usuario.google@gmail.com', color: '#7c5cff' },
-                    { name: 'Cuenta Personal', email: 'personal.account@gmail.com', color: '#00d4b1' }
-                  ].map((acc, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSelectGoogleAccount(acc)}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-slate-100 rounded-xl transition-all border border-slate-200 text-left"
-                    >
-                      <div className="w-9 h-9 rounded-full text-white font-bold text-xs flex items-center justify-center" style={{ backgroundColor: acc.color }}>
-                        {acc.name[0]}
-                      </div>
-                      <div className="truncate flex-1">
-                        <div className="text-xs font-semibold text-slate-800">{acc.name}</div>
-                        <div className="text-[11px] text-slate-500 truncate">{acc.email}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="pt-2 text-[11px] text-slate-400 text-center">
-                Para continuar, Google compartirá tu nombre y correo con Elraizer Community.
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -341,6 +393,19 @@ export default function App() {
           ◈ Elraizer Community
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowCartModal(true)}
+            className="relative p-2 bg-[#1d242e] hover:bg-[#2a323d] text-[#e9eef5] rounded-xl border border-[#2a323d] flex items-center gap-2 transition-all text-xs font-semibold"
+          >
+            <ShoppingCart size={18} className="text-[#00d4b1]" />
+            <span className="hidden sm:inline">Carrito</span>
+            {cart.length > 0 && (
+              <span className="bg-[#7c5cff] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                {cart.reduce((a, b) => a + b.qty, 0)}
+              </span>
+            )}
+          </button>
+
           {currentUser?.role === 'admin' && (
             <button onClick={() => setShowAdminPanel(!showAdminPanel)} className="p-2 bg-[#ffb020]/20 text-[#ffb020] rounded-xl border border-[#ffb020]/40 font-semibold text-xs flex items-center gap-1">
               👑 Panel Maestro
@@ -357,12 +422,14 @@ export default function App() {
 
       <nav className="sticky top-14 z-30 bg-[#161b23] border-b border-[#2a323d] flex justify-center gap-2 p-2 overflow-x-auto">
         <button onClick={() => setActiveTab('feed')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'feed' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🏠 Feed</button>
+        <button onClick={() => setActiveTab('marketplace')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'marketplace' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🛒 Marketplace</button>
         <button onClick={() => setActiveTab('chat')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>💬 Chat Global</button>
         <button onClick={() => setActiveTab('dm')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'dm' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>✉️ Mensajes Privados</button>
         <button onClick={() => setActiveTab('profile')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'profile' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>👤 Mi Perfil</button>
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
+        {/* TAB FEED */}
         {activeTab === 'feed' && (
           <div className="space-y-4">
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
@@ -430,6 +497,62 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB MARKETPLACE & VENTAS DE PRODUCTOS */}
+        {activeTab === 'marketplace' && (
+          <div className="space-y-6">
+            <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-[#00d4b1] to-[#7c5cff] bg-clip-text text-transparent">
+                  Marketplace Digital
+                </h2>
+                <p className="text-xs text-[#8b97a8] mt-1">Compra y vende recursos, servicios y software de forma segura.</p>
+              </div>
+              <button
+                onClick={() => setShowSellModal(true)}
+                className="px-4 py-2.5 bg-gradient-to-r from-[#00d4b1] to-[#10b981] text-slate-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg hover:opacity-90 transition-all"
+              >
+                <Plus size={16} /> Publicar Producto / Servicio
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {products.map(prod => (
+                <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden flex flex-col justify-between hover:border-[#7c5cff]/50 transition-all group">
+                  <div>
+                    <div className="h-44 overflow-hidden relative">
+                      <img src={prod.image} alt={prod.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      <span className="absolute top-3 right-3 bg-[#161b23]/80 backdrop-blur-md text-[#00d4b1] border border-[#00d4b1]/30 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                        {prod.category}
+                      </span>
+                    </div>
+                    <div className="p-4 space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-[#8b97a8]">
+                        <div className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ backgroundColor: prod.seller_color }}>
+                          {prod.seller_name[0]}
+                        </div>
+                        <span>{prod.seller_name}</span>
+                      </div>
+                      <h3 className="font-bold text-sm text-[#e9eef5] group-hover:text-[#7c5cff] transition-colors">{prod.title}</h3>
+                      <p className="text-xs text-[#8b97a8] line-clamp-2">{prod.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 pt-0 flex items-center justify-between border-t border-[#2a323d]/50 mt-2">
+                    <div className="text-lg font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</div>
+                    <button
+                      onClick={() => addToCart(prod)}
+                      className="px-3 py-1.5 bg-[#7c5cff] hover:bg-[#6b47ff] text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <ShoppingCart size={14} /> Añadir al Carrito
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB CHAT GLOBAL */}
         {activeTab === 'chat' && (
           <div className="bg-[#161b23] border border-[#2a323d] rounded-xl flex flex-col h-[600px]">
             <div className="p-4 border-b border-[#2a323d] font-semibold text-sm flex items-center justify-between">
@@ -461,6 +584,7 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB MENSAJES PRIVADOS */}
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-2 overflow-y-auto">
@@ -522,6 +646,7 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB PERFIL */}
         {activeTab === 'profile' && (
           <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-xl space-y-6">
             <div className="flex items-center gap-4">
@@ -543,6 +668,159 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* MODAL CARRITO DE COMPRAS */}
+      {showCartModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#161b23] border border-[#2a323d] text-[#e9eef5] rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+            <button
+              onClick={() => setShowCartModal(false)}
+              className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-2 border-b border-[#2a323d] pb-3">
+              <ShoppingCart size={22} className="text-[#00d4b1]" />
+              <h3 className="text-lg font-bold">Carrito de Compras</h3>
+            </div>
+
+            {orderSuccess ? (
+              <div className="py-8 text-center space-y-3">
+                <CheckCircle2 size={48} className="mx-auto text-[#00d4b1]" />
+                <h4 className="text-lg font-bold text-white">¡Compra realizada con éxito!</h4>
+                <p className="text-xs text-[#8b97a8]">Recibirás la confirmación e instrucciones de acceso de inmediato.</p>
+              </div>
+            ) : cart.length === 0 ? (
+              <div className="py-12 text-center text-[#8b97a8] text-sm">
+                Tu carrito de compras está vacío.
+              </div>
+            ) : (
+              <>
+                <div className="max-h-60 overflow-y-auto space-y-3 pr-1">
+                  {cart.map(item => (
+                    <div key={item.id} className="flex items-center justify-between bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">
+                      <div className="truncate flex-1 pr-2">
+                        <div className="font-semibold text-xs text-white truncate">{item.title}</div>
+                        <div className="text-[11px] text-[#00d4b1]">${item.price.toFixed(2)} x {item.qty}</div>
+                      </div>
+                      <button
+                        onClick={() => removeFromCart(item.id)}
+                        className="text-[#ff5470] hover:bg-[#ff5470]/10 p-1.5 rounded-lg transition-all"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-[#2a323d] pt-3 flex justify-between items-center text-sm font-bold">
+                  <span>Total:</span>
+                  <span className="text-lg text-[#00d4b1]">${cartTotal.toFixed(2)}</span>
+                </div>
+
+                <button
+                  onClick={handleCheckout}
+                  className="w-full bg-gradient-to-r from-[#00d4b1] to-[#7c5cff] text-slate-950 font-bold py-3 rounded-xl text-xs hover:opacity-95 transition-all shadow-lg"
+                >
+                  Procesar Pago
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PUBLICAR PRODUCTO/SERVICIO EN EL MARKETPLACE */}
+      {showSellModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#161b23] border border-[#2a323d] text-[#e9eef5] rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+            <button
+              onClick={() => setShowSellModal(false)}
+              className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-2 border-b border-[#2a323d] pb-3">
+              <ShoppingBag size={22} className="text-[#7c5cff]" />
+              <h3 className="text-lg font-bold">Publicar en Marketplace</h3>
+            </div>
+
+            <form onSubmit={handlePublishProduct} className="space-y-3">
+              <div>
+                <label className="text-xs text-[#8b97a8] block mb-1">Título del Producto/Servicio</label>
+                <input
+                  type="text"
+                  required
+                  value={prodTitle}
+                  onChange={(e) => setProdTitle(e.target.value)}
+                  className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                  placeholder="Ej: Script de automatización Web / UI Kit"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[#8b97a8] block mb-1">Precio ($ USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={prodPrice}
+                    onChange={(e) => setProdPrice(e.target.value)}
+                    className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                    placeholder="25.00"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[#8b97a8] block mb-1">Categoría</label>
+                  <select
+                    value={prodCategory}
+                    onChange={(e) => setProdCategory(e.target.value)}
+                    className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                  >
+                    <option value="Digital">Digital</option>
+                    <option value="Software">Software</option>
+                    <option value="Plantillas">Plantillas</option>
+                    <option value="Servicios">Servicios</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-[#8b97a8] block mb-1">URL de Imagen (Opcional)</label>
+                <input
+                  type="url"
+                  value={prodImage}
+                  onChange={(e) => setProdImage(e.target.value)}
+                  className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff]"
+                  placeholder="https://images.unsplash.com/..."
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-[#8b97a8] block mb-1">Descripción corta</label>
+                <textarea
+                  required
+                  value={prodDesc}
+                  onChange={(e) => setProdDesc(e.target.value)}
+                  rows="3"
+                  className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#7c5cff] resize-none"
+                  placeholder="Explica detalladamente qué ofrece tu producto o servicio..."
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] text-white font-bold py-3 rounded-xl text-xs hover:opacity-95 transition-all shadow-lg mt-2"
+              >
+                Publicar Ahora
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
