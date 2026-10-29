@@ -11,36 +11,26 @@ const AVATAR_COLORS = [
   '#3b82f6', '#10b981', '#ec4899', '#8b5cf6'
 ];
 
+// Base de datos limpia: SOLO la cuenta maestra EXT3
 const INITIAL_USERS = [
-  { id: 'ext3-id', email: 'ext3@elraizer.com', username: 'EXT3', bio: 'Cuenta maestra · Fundador de Elraizer Community', avatar_color: '#ffb020', role: 'admin', chat_role: 'master', points: 1250, points_given: 0, suspended: false },
-  { id: 'lucia-id', email: 'lucia@elraizer.com', username: 'LuciaDev', bio: 'Fullstack Dev & UI Enthusiast ⚡', avatar_color: '#7c5cff', role: 'user', chat_role: 'moderador', points: 120, points_given: 0, suspended: false },
-  { id: 'marco-id', email: 'marco@elraizer.com', username: 'MarcoPro', bio: 'Gamer & Techie 🎮', avatar_color: '#00d4b1', role: 'user', chat_role: 'nuevo', points: 35, points_given: 0, suspended: false },
-  { id: 'sofia-id', email: 'sofia@elraizer.com', username: 'SofiaDesign', bio: 'UI/UX Designer & Art director 🎨', avatar_color: '#ff5470', role: 'user', chat_role: 'maestro', points: 210, points_given: 0, suspended: false },
-  { id: 'diego-id', email: 'diego@elraizer.com', username: 'DiegoCodes', bio: 'Backend developer & Cloud engineer 🚀', avatar_color: '#3b82f6', role: 'user', chat_role: 'nuevo', points: 15, points_given: 0, suspended: false }
+  { id: 'ext3-id', email: 'ext3@elraizer.com', username: 'EXT3', bio: 'Cuenta maestra · Fundador de Elraizer Community', avatar_color: '#ffb020', role: 'admin', chat_role: 'master', points: 1250, points_given: 0, suspended: false }
 ];
 
 const INITIAL_POSTS = [
-  { id: 'p1', author_id: 'ext3-id', author_name: 'EXT3', author_color: '#ffb020', author_chat_role: 'master', text: '¡Bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y envía mensajes privados.', tags: ['bienvenida', 'comunidad', 'anuncio'], media: [], votes: 42, created_at: 'Hace 2 horas' },
-  { id: 'p2', author_id: 'lucia-id', author_name: 'LuciaDev', author_color: '#7c5cff', author_chat_role: 'moderador', text: 'Acabo de publicar un nuevo recurso de UI kits en el Marketplace. ¡Echadle un vistazo!', tags: ['diseño', 'marketplace'], media: [], votes: 15, created_at: 'Hace 1 hora' }
+  { id: 'p1', author_id: 'ext3-id', author_name: 'EXT3', author_color: '#ffb020', author_chat_role: 'master', text: '¡Bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y envía mensajes privados.', tags: ['bienvenida', 'comunidad', 'anuncio'], media: [], votes: 42, created_at: 'Hace 2 horas' }
 ];
 
 export default function App() {
   const [theme, setTheme] = useState('dark');
   const [currentUser, setCurrentUser] = useState(null);
-  const [pendingGoogleUser, setPendingGoogleUser] = useState(null);
-  const [onboardingRequired, setOnboardingRequired] = useState(false);
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
 
   // Auth states
   const [authTab, setAuthTab] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
-
-  // Onboarding states
-  const [onboardUsername, setOnboardUsername] = useState('');
-  const [onboardColor, setOnboardColor] = useState(AVATAR_COLORS[0]);
-  const [onboardBio, setOnboardBio] = useState('');
-  const [onboardError, setOnboardError] = useState('');
 
   // App data states
   const [users, setUsers] = useState(() => {
@@ -118,58 +108,47 @@ export default function App() {
       setAuthError('Ya existe una cuenta con este correo electrónico.');
       return;
     }
-    setPendingGoogleUser({ email, isGoogle: false });
-    setOnboardingRequired(true);
-  };
-
-  const handleGoogleLogin = () => {
-    const googleEmails = ['usuario.google@gmail.com', 'mimatos@gmail.com', 'elraizer.user@gmail.com'];
-    const randomEmail = googleEmails[Math.floor(Math.random() * googleEmails.length)];
-    const existingUser = users.find(u => u.email === randomEmail);
-
-    if (existingUser) {
-      if (existingUser.suspended) {
-        setAuthError('Esta cuenta de Google ha sido suspendida por la administración.');
-        return;
-      }
-      setCurrentUser(existingUser);
-    } else {
-      setPendingGoogleUser({ email: randomEmail, isGoogle: true });
-      setOnboardUsername('GoogleUser_' + Math.floor(Math.random() * 1000));
-      setOnboardingRequired(true);
-    }
-  };
-
-  const handleCompleteOnboarding = (e) => {
-    e.preventDefault();
-    if (!onboardUsername.trim() || onboardUsername.length < 3) {
-      setOnboardError('El nombre de usuario debe tener al menos 3 caracteres.');
-      return;
-    }
-
-    const usernameTaken = users.some(u => u.username.toLowerCase() === onboardUsername.trim().toLowerCase());
-    if (usernameTaken) {
-      setOnboardError('El nombre de usuario ya está en uso. Elige otro.');
-      return;
-    }
-
     const newUser = {
       id: 'usr_' + Date.now(),
-      email: pendingGoogleUser ? pendingGoogleUser.email : email,
-      username: onboardUsername.trim(),
-      avatar_color: onboardColor,
-      bio: onboardBio.trim() || 'Miembro de Elraizer Community 🚀',
+      email: email.toLowerCase(),
+      username: email.split('@')[0],
+      avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+      bio: 'Miembro de Elraizer Community 🚀',
       role: 'user',
       chat_role: 'nuevo',
       points: 0,
       points_given: 0,
       suspended: false
     };
-
     setUsers([...users, newUser]);
     setCurrentUser(newUser);
-    setOnboardingRequired(false);
-    setPendingGoogleUser(null);
+  };
+
+  const handleSelectGoogleAccount = (googleAccount) => {
+    setGoogleAuthLoading(true);
+    setTimeout(() => {
+      const existing = users.find(u => u.email.toLowerCase() === googleAccount.email.toLowerCase());
+      if (existing) {
+        setCurrentUser(existing);
+      } else {
+        const newGUser = {
+          id: 'usr_' + Date.now(),
+          email: googleAccount.email,
+          username: googleAccount.name,
+          avatar_color: googleAccount.color,
+          bio: 'Conectado con cuenta Google 🌐',
+          role: 'user',
+          chat_role: 'nuevo',
+          points: 10,
+          points_given: 0,
+          suspended: false
+        };
+        setUsers(prev => [...prev, newGUser]);
+        setCurrentUser(newGUser);
+      }
+      setGoogleAuthLoading(false);
+      setShowGoogleModal(false);
+    }, 600);
   };
 
   const handleSendChat = () => {
@@ -201,7 +180,7 @@ export default function App() {
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
-  if (!currentUser && !onboardingRequired) {
+  if (!currentUser) {
     return (
       <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#0e1116] text-[#e9eef5]' : 'bg-[#f4f6fb] text-[#0f172a]'} flex items-center justify-center p-4`}>
         <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-[#161b23] border border-[#2a323d] p-8 rounded-2xl shadow-2xl">
@@ -220,22 +199,6 @@ export default function App() {
               <div className="flex items-center gap-3 bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">
                 <Award className="text-[#ffb020]" size={20} />
                 <span>Sistema de reputación, rangos y moderación</span>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-[#2a323d]">
-              <p className="text-xs text-[#8b97a8] mb-2 font-semibold">Acceso Rápido Demo:</p>
-              <div className="flex flex-wrap gap-2">
-                {users.map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => setCurrentUser(u)}
-                    className="px-3 py-1.5 bg-[#1d242e] hover:bg-[#2a323d] border border-[#2a323d] rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all"
-                  >
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: u.avatar_color }}></span>
-                    {u.username} {u.chat_role === 'master' && '👑'}
-                  </button>
-                ))}
               </div>
             </div>
           </div>
@@ -296,75 +259,77 @@ export default function App() {
             </div>
 
             <button
-              onClick={handleGoogleLogin}
+              onClick={() => setShowGoogleModal(true)}
               type="button"
               className="w-full bg-[#161b23] hover:bg-[#2a323d] border border-[#2a323d] py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all"
             >
-              🌐 Continuar con Google
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              Continuar con Google
             </button>
           </div>
         </div>
-      </div>
-    );
-  }
 
-  if (onboardingRequired) {
-    return (
-      <div className="min-h-screen bg-[#0e1116] text-[#e9eef5] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl space-y-4">
-          <h2 className="text-2xl font-bold text-center">Configura tu Perfil 🚀</h2>
-          <p className="text-xs text-[#8b97a8] text-center">Completa tu información para unirte a Elraizer Community.</p>
+        {/* MODAL GOOGLE AUTH */}
+        {showGoogleModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white text-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-5 shadow-2xl relative">
+              <button 
+                onClick={() => setShowGoogleModal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+              >
+                <X size={20} />
+              </button>
 
-          {onboardError && <div className="p-3 bg-[#ff5470]/10 border border-[#ff5470] text-[#ff5470] rounded-xl text-xs">{onboardError}</div>}
+              <div className="text-center space-y-2">
+                <svg className="w-8 h-8 mx-auto" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                </svg>
+                <h3 className="text-lg font-bold text-slate-900">Iniciar sesión con Google</h3>
+                <p className="text-xs text-slate-500">Selecciona una cuenta para ir a <span className="font-semibold text-slate-800">Elraizer Community</span></p>
+              </div>
 
-          <form onSubmit={handleCompleteOnboarding} className="space-y-4">
-            <div>
-              <label className="text-xs text-[#8b97a8] block mb-1">Nombre de Usuario (único)</label>
-              <input
-                type="text"
-                required
-                value={onboardUsername}
-                onChange={(e) => setOnboardUsername(e.target.value)}
-                className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]"
-                placeholder="ej: DevMaster"
-              />
-            </div>
+              {googleAuthLoading ? (
+                <div className="py-8 flex flex-col items-center justify-center space-y-3">
+                  <RefreshCw className="animate-spin text-[#7c5cff]" size={28} />
+                  <span className="text-xs text-slate-500">Iniciando sesión de forma segura...</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {[
+                    { name: 'Usuario Google', email: 'usuario.google@gmail.com', color: '#7c5cff' },
+                    { name: 'Cuenta Personal', email: 'personal.account@gmail.com', color: '#00d4b1' }
+                  ].map((acc, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSelectGoogleAccount(acc)}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-slate-100 rounded-xl transition-all border border-slate-200 text-left"
+                    >
+                      <div className="w-9 h-9 rounded-full text-white font-bold text-xs flex items-center justify-center" style={{ backgroundColor: acc.color }}>
+                        {acc.name[0]}
+                      </div>
+                      <div className="truncate flex-1">
+                        <div className="text-xs font-semibold text-slate-800">{acc.name}</div>
+                        <div className="text-[11px] text-slate-500 truncate">{acc.email}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
 
-            <div>
-              <label className="text-xs text-[#8b97a8] block mb-1">Color de Avatar</label>
-              <div className="flex gap-2 justify-between">
-                {AVATAR_COLORS.map((c) => (
-                  <button
-                    type="button"
-                    key={c}
-                    onClick={() => setOnboardColor(c)}
-                    className={`w-8 h-8 rounded-full border-2 transition-all ${onboardColor === c ? 'border-white scale-110' : 'border-transparent'}`}
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
+              <div className="pt-2 text-[11px] text-slate-400 text-center">
+                Para continuar, Google compartirá tu nombre y correo con Elraizer Community.
               </div>
             </div>
-
-            <div>
-              <label className="text-xs text-[#8b97a8] block mb-1">Biografía (máx 80 caracteres)</label>
-              <input
-                type="text"
-                maxLength={80}
-                value={onboardBio}
-                onChange={(e) => setOnboardBio(e.target.value)}
-                className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff]"
-                placeholder="Desarrollador / Entusiasta de tecnología..."
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:opacity-95 transition-all"
-            >
-              Completar Registro 🚀
-            </button>
-          </form>
-        </div>
+          </div>
+        )}
       </div>
     );
   }
