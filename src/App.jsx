@@ -7,7 +7,7 @@ import {
   DollarSign, Package, CheckCircle2, Crown, Users, Settings, Activity, Camera,
   Edit3, Globe, Github, Twitter, Linkedin, Briefcase, MapPin, Calendar, Heart, Eye,
   Archive, Inbox, Send as SendIcon, FileText, CheckCheck, UserMinus, ShieldOff, Layers, Filter,
-  Wifi, Circle, Award as AwardIcon, Gift, Clock, Key, KeyRound, Upload, Link as LinkIcon
+  Wifi, Circle, Award as AwardIcon, Gift, Clock, Key, KeyRound, Upload, Link as LinkIcon, Sparkles, TrendingUp
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
@@ -73,6 +73,29 @@ const INITIAL_USERS = [
     joinedDate: 'Enero 2025',
     status: 'active',
     isOnline: true
+  },
+  { 
+    id: 'usr_demo2', 
+    email: 'maria@elraizer.com', 
+    username: 'MariaDev', 
+    password: 'User1234*', 
+    fullName: 'María Fernández',
+    headline: 'Diseñadora UI/UX & Digital',
+    bio: 'Especialista en interfaces oscuras y minimalistas.', 
+    location: 'Medellín, Colombia',
+    website: '',
+    github: 'maria_ui',
+    twitter: '',
+    avatar_url: '',
+    banner_url: '',
+    avatar_color: '#ec4899', 
+    role: 'user', 
+    chat_role: 'veterano', 
+    points: 340, 
+    dailyPointsGiven: 0,
+    joinedDate: 'Noviembre 2024',
+    status: 'active',
+    isOnline: false
   }
 ];
 
@@ -87,6 +110,7 @@ const INITIAL_POSTS = [
     tags: ['bienvenida', 'comunidad', 'anuncio'], 
     attachments: [], 
     votes: 42, 
+    votedBy: [],
     created_at: 'Hace 2 horas' 
   }
 ];
@@ -112,6 +136,21 @@ const INITIAL_PRODUCTS = [
     sales: 18,
     createdAt: new Date().toISOString(),
     expiresAt: getFutureDateString(28)
+  },
+  {
+    id: 'prod_2',
+    title: 'Plantilla Dashboard UI Kit React',
+    description: 'Sistema de diseño completo con componentes en Tailwind CSS y modo oscuro nativo.',
+    price: 39.99,
+    category: 'Plantillas & UI Kits',
+    seller_id: 'usr_demo2',
+    seller_name: 'MariaDev',
+    seller_color: '#ec4899',
+    image: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=600&auto=format&fit=crop&q=80',
+    rating: 5.0,
+    sales: 24,
+    createdAt: new Date().toISOString(),
+    expiresAt: getFutureDateString(30)
   }
 ];
 
@@ -125,7 +164,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Estados con sincronización directa desde LocalStorage
+  // Estados
   const [users, setUsers] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_users');
@@ -198,9 +237,11 @@ export default function App() {
   const [activeDmUser, setActiveDmUser] = useState(null);
   const [dmSearchQuery, setDmSearchQuery] = useState('');
 
-  // Marketplace Filters
+  // Marketplace Filters & My Products Tab
+  const [marketTab, setMarketTab] = useState('browse'); // 'browse' | 'my_products'
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [marketSearchQuery, setMarketSearchQuery] = useState('');
+  const [priceSort, setPriceSort] = useState('default'); // 'default' | 'low_high' | 'high_low'
 
   // Modals & Profile Edit State
   const [showCartModal, setShowCartModal] = useState(false);
@@ -238,7 +279,7 @@ export default function App() {
   const chatEndRef = useRef(null);
   const dmEndRef = useRef(null);
 
-  // Sincronización en tiempo real con event listener de almacenamiento y polling constante
+  // Sincronización en tiempo real
   useEffect(() => {
     const syncData = () => {
       try {
@@ -287,7 +328,7 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Auto-scroll en Chat Global y Mensajería Privada
+  // Auto-scroll
   useEffect(() => {
     if (activeTab === 'chat') {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -300,7 +341,7 @@ export default function App() {
     }
   }, [directMessages, activeDmUser, activeTab]);
 
-  // Guardar cambios en LocalStorage cuando el estado cambia localmente
+  // Modificadores de estado
   const updateChat = (newChat) => {
     setChatMessages(newChat);
     localStorage.setItem('elraizer_chat', JSON.stringify(newChat));
@@ -316,7 +357,18 @@ export default function App() {
     localStorage.setItem('elraizer_users', JSON.stringify(newUsers));
   };
 
+  const updatePostsList = (newPosts) => {
+    setPosts(newPosts);
+    localStorage.setItem('elraizer_posts', JSON.stringify(newPosts));
+  };
+
+  const updateProductsList = (newProds) => {
+    setProducts(newProds);
+    localStorage.setItem('elraizer_products', JSON.stringify(newProds));
+  };
+
   const unreadTotalCount = currentUser ? directMessages.filter(m => m.receiver_id === currentUser.id && !m.read).length : 0;
+  const onlineUsersCount = users.filter(u => u.isOnline).length;
 
   // Acciones Chat Global
   const handleSendGlobalChat = (e) => {
@@ -354,6 +406,34 @@ export default function App() {
     const currentDms = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
     updateDms([...currentDms, dm]);
     setDmInput('');
+  };
+
+  // Puntos/Votos en publicaciones del feed
+  const handleVotePost = (postId) => {
+    if (!currentUser) return;
+    const currentPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
+    const updated = currentPosts.map(p => {
+      if (p.id === postId) {
+        const votedBy = p.votedBy || [];
+        if (votedBy.includes(currentUser.id)) return p;
+        return {
+          ...p,
+          votes: (p.votes || 0) + 1,
+          votedBy: [...votedBy, currentUser.id]
+        };
+      }
+      return p;
+    });
+
+    // Otorgar punto al autor
+    const targetPost = currentPosts.find(p => p.id === postId);
+    if (targetPost && !(targetPost.votedBy || []).includes(currentUser.id)) {
+      const currentUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
+      const updatedUsers = currentUsers.map(u => u.id === targetPost.author_id ? { ...u, points: (u.points || 0) + 1 } : u);
+      updateUsersList(updatedUsers);
+    }
+
+    updatePostsList(updated);
   };
 
   // Acciones Perfil Maestro & Panel Admin
@@ -398,6 +478,12 @@ export default function App() {
     updateUsersList(updatedList);
   };
 
+  const handleDeleteProduct = (prodId) => {
+    const currentProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
+    const updated = currentProds.filter(p => p.id !== prodId);
+    updateProductsList(updated);
+  };
+
   const executePublishProduct = (e) => {
     if (e) e.preventDefault();
     if (!newProdTitle.trim() || !newProdPrice || !newProdDescription.trim()) {
@@ -427,8 +513,7 @@ export default function App() {
 
     const currentProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
     const updatedProds = [newProduct, ...currentProds];
-    localStorage.setItem('elraizer_products', JSON.stringify(updatedProds));
-    setProducts(updatedProds);
+    updateProductsList(updatedProds);
 
     setSelectedCategory('Todos');
     setMarketSearchQuery('');
@@ -457,13 +542,13 @@ export default function App() {
       tags: ['comunidad'],
       attachments: postAttachments,
       votes: 0,
+      votedBy: [],
       created_at: 'Ahora mismo'
     };
 
     const currentPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
     const updatedPosts = [newPost, ...currentPosts];
-    localStorage.setItem('elraizer_posts', JSON.stringify(updatedPosts));
-    setPosts(updatedPosts);
+    updatePostsList(updatedPosts);
 
     setNewPostText('');
     setPostAttachments([]);
@@ -567,7 +652,13 @@ export default function App() {
     const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
     const matchesQuery = !marketSearchQuery.trim() || p.title.toLowerCase().includes(marketSearchQuery.toLowerCase()) || p.description.toLowerCase().includes(marketSearchQuery.toLowerCase());
     return matchesCategory && matchesQuery;
+  }).sort((a, b) => {
+    if (priceSort === 'low_high') return a.price - b.price;
+    if (priceSort === 'high_low') return b.price - a.price;
+    return 0;
   });
+
+  const myProducts = products.filter(p => p.seller_id === currentUser?.id);
 
   if (!currentUser) {
     return (
@@ -596,10 +687,19 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#0e1116] text-[#e9eef5]' : 'bg-[#f4f6fb] text-[#0f172a]'}`}>
+      {/* HEADER PRINCIPAL */}
       <header className="sticky top-0 z-40 bg-[#161b23]/90 backdrop-blur-md border-b border-[#2a323d] px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 font-bold text-lg bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">
-          ◈ Elraizer Community
+        <div className="flex items-center gap-3">
+          <div className="font-bold text-lg bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent flex items-center gap-2">
+            ◈ Elraizer Community
+          </div>
+          {/* MEJORA 2: PERSONAS CONECTADAS EN TIEMPO REAL */}
+          <div className="hidden sm:flex items-center gap-1.5 bg-[#10b981]/10 border border-[#10b981]/30 px-3 py-1 rounded-full text-xs text-[#10b981] font-semibold">
+            <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse" />
+            <span>{onlineUsersCount} Online</span>
+          </div>
         </div>
+
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-1.5 bg-[#1d242e] border border-[#7c5cff]/40 px-3 py-1.5 rounded-xl text-xs">
             <AwardIcon size={16} className="text-[#ffb020]" />
@@ -615,6 +715,7 @@ export default function App() {
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 bg-[#1d242e] rounded-xl border border-[#2a323d]">
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+
           <button onClick={() => {
             const currentUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
             const updated = currentUsers.map(u => u.id === currentUser.id ? { ...u, isOnline: false } : u);
@@ -626,6 +727,7 @@ export default function App() {
         </div>
       </header>
 
+      {/* NAVEGACIÓN */}
       <nav className="sticky top-14 z-30 bg-[#161b23] border-b border-[#2a323d] flex justify-center gap-2 p-2 overflow-x-auto">
         <button onClick={() => setActiveTab('feed')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'feed' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🏠 Feed</button>
         <button onClick={() => setActiveTab('marketplace')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'marketplace' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🛒 Marketplace</button>
@@ -694,43 +796,56 @@ export default function App() {
               </div>
             </div>
 
-            {posts.map(p => (
-              <div key={p.id} className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white" style={{ backgroundColor: p.author_color }}>
-                      {p.author_name[0]}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-sm flex items-center gap-1">
-                        @{p.author_name}
+            {posts.map(p => {
+              const hasVoted = (p.votedBy || []).includes(currentUser.id);
+
+              return (
+                <div key={p.id} className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white" style={{ backgroundColor: p.author_color }}>
+                        {p.author_name[0]}
                       </div>
-                      <div className="text-xs text-[#8b97a8]">{p.created_at}</div>
+                      <div>
+                        <div className="font-semibold text-sm flex items-center gap-1">
+                          @{p.author_name}
+                        </div>
+                        <div className="text-xs text-[#8b97a8]">{p.created_at}</div>
+                      </div>
                     </div>
+
+                    <button
+                      onClick={() => handleVotePost(p.id)}
+                      disabled={hasVoted}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${hasVoted ? 'bg-[#7c5cff]/20 border-[#7c5cff] text-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] text-[#8b97a8] hover:text-white hover:border-[#7c5cff]'}`}
+                    >
+                      <ThumbsUp size={14} className={hasVoted ? 'fill-[#7c5cff]' : ''} />
+                      <span>{p.votes || 0}</span>
+                    </button>
                   </div>
+                  <p className="text-sm leading-relaxed">{p.text}</p>
+                  {p.attachments && p.attachments.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                      {p.attachments.map(att => (
+                        <div key={att.id} className="bg-[#1d242e] p-2 rounded-xl border border-[#2a323d] overflow-hidden">
+                          {att.type === 'image' && <img src={att.url} alt={att.name} className="w-full h-48 object-cover rounded-lg" />}
+                          {att.type === 'video' && <video src={att.url} controls className="w-full h-48 object-cover rounded-lg" />}
+                          {att.type === 'file' && (
+                            <a href={att.url} download={att.name} className="flex items-center gap-2 p-3 text-xs text-[#00d4b1] font-semibold hover:underline">
+                              <Paperclip size={18} /> Descargar {att.name}
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm leading-relaxed">{p.text}</p>
-                {p.attachments && p.attachments.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-                    {p.attachments.map(att => (
-                      <div key={att.id} className="bg-[#1d242e] p-2 rounded-xl border border-[#2a323d] overflow-hidden">
-                        {att.type === 'image' && <img src={att.url} alt={att.name} className="w-full h-48 object-cover rounded-lg" />}
-                        {att.type === 'video' && <video src={att.url} controls className="w-full h-48 object-cover rounded-lg" />}
-                        {att.type === 'file' && (
-                          <a href={att.url} download={att.name} className="flex items-center gap-2 p-3 text-xs text-[#00d4b1] font-semibold hover:underline">
-                            <Paperclip size={18} /> Descargar {att.name}
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        {/* TAB MARKETPLACE */}
+        {/* TAB MARKETPLACE CON MEJORAS COMPLETAS */}
         {activeTab === 'marketplace' && (
           <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4">
@@ -738,7 +853,7 @@ export default function App() {
                 <h2 className="text-2xl font-bold bg-gradient-to-r from-[#00d4b1] to-[#7c5cff] bg-clip-text text-transparent flex items-center gap-2">
                   🛒 Marketplace Pro Elraizer
                 </h2>
-                <p className="text-xs text-[#8b97a8] mt-1">Publicaciones activas en la plataforma durante 30 días.</p>
+                <p className="text-xs text-[#8b97a8] mt-1">Explora productos digitales o administra tus publicaciones activas.</p>
               </div>
               <button 
                 type="button"
@@ -749,49 +864,116 @@ export default function App() {
               </button>
             </div>
 
-            <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
-              <div className="relative">
-                <Search size={16} className="absolute left-3.5 top-3 text-[#8b97a8]" />
-                <input
-                  type="text"
-                  value={marketSearchQuery}
-                  onChange={(e) => setMarketSearchQuery(e.target.value)}
-                  placeholder="Buscar en la tienda..."
-                  className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-[#00d4b1]"
-                />
-              </div>
-
-              <div className="flex gap-2 overflow-x-auto pb-1 pt-1">
-                {MARKETPLACE_CATEGORIES.map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-[#00d4b1] text-slate-950 font-bold' : 'bg-[#1d242e] text-[#8b97a8] hover:bg-[#2a323d] hover:text-white'}`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
+            {/* MEJORA 4: PESTAÑAS EXPLORAR / MIS PRODUCTOS */}
+            <div className="flex border-b border-[#2a323d] gap-4">
+              <button
+                onClick={() => setMarketTab('browse')}
+                className={`pb-3 text-xs font-bold transition-all ${marketTab === 'browse' ? 'border-b-2 border-[#00d4b1] text-[#00d4b1]' : 'text-[#8b97a8] hover:text-white'}`}
+              >
+                🛍️ Catálogo General ({products.length})
+              </button>
+              <button
+                onClick={() => setMarketTab('my_products')}
+                className={`pb-3 text-xs font-bold transition-all ${marketTab === 'my_products' ? 'border-b-2 border-[#00d4b1] text-[#00d4b1]' : 'text-[#8b97a8] hover:text-white'}`}
+              >
+                📦 Mis Productos Publicados ({myProducts.length})
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredProducts.map(prod => (
-                <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden flex flex-col justify-between group p-4 space-y-3">
-                  <img src={prod.image} alt={prod.title} className="w-full h-48 object-cover rounded-xl" />
-                  <div>
-                    <span className="text-[10px] bg-[#7c5cff]/20 text-[#7c5cff] font-bold px-2 py-0.5 rounded-full uppercase">{prod.category}</span>
-                    <h3 className="font-bold text-base text-[#e9eef5] mt-1">{prod.title}</h3>
-                    <p className="text-xs text-[#8b97a8] line-clamp-2">{prod.description}</p>
+            {marketTab === 'browse' ? (
+              <>
+                <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative flex-1">
+                      <Search size={16} className="absolute left-3.5 top-3 text-[#8b97a8]" />
+                      <input
+                        type="text"
+                        value={marketSearchQuery}
+                        onChange={(e) => setMarketSearchQuery(e.target.value)}
+                        placeholder="Buscar en la tienda..."
+                        className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl pl-10 pr-4 py-2 text-xs focus:outline-none focus:border-[#00d4b1]"
+                      />
+                    </div>
+
+                    {/* MEJORA 4: FILTRO POR PRECIO */}
+                    <select
+                      value={priceSort}
+                      onChange={(e) => setPriceSort(e.target.value)}
+                      className="bg-[#1d242e] border border-[#2a323d] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00d4b1]"
+                    >
+                      <option value="default">Ordenar por Precio</option>
+                      <option value="low_high">Precio: Menor a Mayor</option>
+                      <option value="high_low">Precio: Mayor a Menor</option>
+                    </select>
                   </div>
-                  <div className="flex items-center justify-between border-t border-[#2a323d] pt-3">
-                    <span className="text-xl font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</span>
-                    <button onClick={() => setCart([...cart, { ...prod, qty: 1 }])} className="px-3.5 py-1.5 bg-[#7c5cff] text-white text-xs font-bold rounded-xl flex items-center gap-1">
-                      <ShoppingCart size={14} /> Comprar
-                    </button>
+
+                  <div className="flex gap-2 overflow-x-auto pb-1 pt-1">
+                    {MARKETPLACE_CATEGORIES.map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-[#00d4b1] text-slate-950 font-bold' : 'bg-[#1d242e] text-[#8b97a8] hover:bg-[#2a323d] hover:text-white'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {filteredProducts.map(prod => (
+                    <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden flex flex-col justify-between group p-4 space-y-3">
+                      <img src={prod.image} alt={prod.title} className="w-full h-48 object-cover rounded-xl" />
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] bg-[#7c5cff]/20 text-[#7c5cff] font-bold px-2 py-0.5 rounded-full uppercase">{prod.category}</span>
+                          <span className="text-[10px] text-[#8b97a8]">Vendedor: @{prod.seller_name}</span>
+                        </div>
+                        <h3 className="font-bold text-base text-[#e9eef5]">{prod.title}</h3>
+                        <p className="text-xs text-[#8b97a8] line-clamp-2 mt-1">{prod.description}</p>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-[#2a323d] pt-3">
+                        <span className="text-xl font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</span>
+                        <button onClick={() => setCart([...cart, { ...prod, qty: 1 }])} className="px-3.5 py-1.5 bg-[#7c5cff] text-white text-xs font-bold rounded-xl flex items-center gap-1">
+                          <ShoppingCart size={14} /> Comprar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              /* PESTAÑA MIS PRODUCTOS PUBLICADOS CON OPCIÓN DE BORRADO */
+              <div className="space-y-4">
+                {myProducts.length === 0 ? (
+                  <div className="bg-[#161b23] border border-[#2a323d] rounded-2xl p-8 text-center text-[#8b97a8] text-xs">
+                    No has publicado productos en el Marketplace todavía.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {myProducts.map(prod => (
+                      <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl p-4 space-y-3 relative group">
+                        <img src={prod.image} alt={prod.title} className="w-full h-40 object-cover rounded-xl" />
+                        <div>
+                          <span className="text-[10px] bg-[#00d4b1]/20 text-[#00d4b1] font-bold px-2 py-0.5 rounded-full uppercase">{prod.category}</span>
+                          <h3 className="font-bold text-base text-white mt-1">{prod.title}</h3>
+                          <p className="text-xs text-[#8b97a8] line-clamp-2 mt-1">{prod.description}</p>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-[#2a323d] pt-3">
+                          <span className="text-lg font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</span>
+                          <button
+                            onClick={() => handleDeleteProduct(prod.id)}
+                            className="px-3 py-1.5 bg-[#ff5470]/20 text-[#ff5470] hover:bg-[#ff5470]/30 border border-[#ff5470]/40 rounded-xl text-xs font-bold flex items-center gap-1"
+                          >
+                            <Trash2 size={14} /> Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -858,6 +1040,7 @@ export default function App() {
                       <div className="flex items-center gap-2 truncate">
                         <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs relative text-white" style={{ backgroundColor: u.avatar_color }}>
                           {u.username[0]}
+                          {u.isOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#10b981] border-2 border-[#161b23] rounded-full" />}
                         </div>
                         <div className="truncate">
                           <div className="font-semibold text-xs text-white flex items-center gap-1">
@@ -923,7 +1106,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MI PERFIL COMPLETO RESTAURADO */}
+        {/* TAB MI PERFIL CON ESTADÍSTICAS Y MEJORAS COMPLETAS */}
         {activeTab === 'profile' && (
           <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden shadow-xl">
@@ -955,6 +1138,26 @@ export default function App() {
                   >
                     <Edit3 size={14} /> {isEditingProfile ? 'Cancelar Edición' : 'Editar Perfil'}
                   </button>
+                </div>
+
+                {/* MEJORA 3: TARJETAS DE ESTADÍSTICAS DE COMUNIDAD */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
+                  <div className="bg-[#1d242e] border border-[#2a323d] p-3 rounded-xl text-center">
+                    <span className="text-xs text-[#8b97a8] block">Puntos Acumulados</span>
+                    <span className="text-lg font-bold text-[#ffb020]">{currentUser.points || 0}</span>
+                  </div>
+                  <div className="bg-[#1d242e] border border-[#2a323d] p-3 rounded-xl text-center">
+                    <span className="text-xs text-[#8b97a8] block">Mis Publicaciones</span>
+                    <span className="text-lg font-bold text-[#7c5cff]">{posts.filter(p => p.author_id === currentUser.id).length}</span>
+                  </div>
+                  <div className="bg-[#1d242e] border border-[#2a323d] p-3 rounded-xl text-center">
+                    <span className="text-xs text-[#8b97a8] block">En Marketplace</span>
+                    <span className="text-lg font-bold text-[#00d4b1]">{products.filter(p => p.seller_id === currentUser.id).length}</span>
+                  </div>
+                  <div className="bg-[#1d242e] border border-[#2a323d] p-3 rounded-xl text-center">
+                    <span className="text-xs text-[#8b97a8] block">Rango en Chat</span>
+                    <span className="text-sm font-bold text-white uppercase">{currentUser.chat_role || 'Miembro'}</span>
+                  </div>
                 </div>
 
                 {isEditingProfile ? (
@@ -1009,25 +1212,46 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB PANEL MAESTRO (SOLO ADMIN) */}
+        {/* TAB PANEL MAESTRO CON METRICAS GLOBALES (SOLO ADMIN) */}
         {activeTab === 'master_panel' && currentUser.role === 'admin' && (
           <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#ffb020]/40 p-6 rounded-2xl">
               <h2 className="text-2xl font-bold text-[#ffb020] flex items-center gap-2">
                 🛡️ Panel Maestro de Administración
               </h2>
-              <p className="text-xs text-[#8b97a8] mt-1">Gestión de usuarios, roles del chat y estados de cuenta.</p>
+              <p className="text-xs text-[#8b97a8] mt-1">Supervisión en tiempo real de la plataforma, miembros y roles.</p>
+            </div>
+
+            {/* MEJORA 1: DASHBOARD CON MÉTRICAS GLOBALES DEL PANEL MAESTRO */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl">
+                <span className="text-xs text-[#8b97a8] block">Total Miembros</span>
+                <span className="text-2xl font-extrabold text-white">{users.length}</span>
+              </div>
+              <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl">
+                <span className="text-xs text-[#8b97a8] block">Usuarios Online</span>
+                <span className="text-2xl font-extrabold text-[#10b981]">{onlineUsersCount}</span>
+              </div>
+              <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl">
+                <span className="text-xs text-[#8b97a8] block">Total Publicaciones</span>
+                <span className="text-2xl font-extrabold text-[#7c5cff]">{posts.length}</span>
+              </div>
+              <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl">
+                <span className="text-xs text-[#8b97a8] block">Items en Tienda</span>
+                <span className="text-2xl font-extrabold text-[#00d4b1]">{products.length}</span>
+              </div>
             </div>
 
             <div className="bg-[#161b23] border border-[#2a323d] rounded-2xl p-4 space-y-4">
-              <h3 className="font-bold text-sm text-white border-b border-[#2a323d] pb-2">Usuarios Registrados ({users.length})</h3>
+              <h3 className="font-bold text-sm text-white border-b border-[#2a323d] pb-2">Gestión de Cuentas y Permisos ({users.length})</h3>
               
               <div className="space-y-3">
                 {users.map(u => (
                   <div key={u.id} className="bg-[#1d242e] p-4 rounded-xl border border-[#2a323d] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white" style={{ backgroundColor: u.avatar_color }}>
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white relative" style={{ backgroundColor: u.avatar_color }}>
                         {u.username[0]}
+                        {u.isOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#10b981] border-2 border-[#161b23] rounded-full" />}
                       </div>
                       <div>
                         <div className="font-bold text-sm text-white flex items-center gap-2">
