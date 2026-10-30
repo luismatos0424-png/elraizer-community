@@ -122,7 +122,6 @@ const INITIAL_POSTS = [
   }
 ];
 
-// Helper para fecha de expiración a 30 días
 const getFutureDateString = (daysAhead) => {
   const d = new Date();
   d.setDate(d.getDate() + daysAhead);
@@ -143,7 +142,7 @@ const INITIAL_PRODUCTS = [
     rating: 4.9,
     sales: 18,
     createdAt: new Date().toISOString(),
-    expiresAt: getFutureDateString(28) // Le quedan 28 días
+    expiresAt: getFutureDateString(28)
   },
   {
     id: 'prod_2',
@@ -158,7 +157,7 @@ const INITIAL_PRODUCTS = [
     rating: 5.0,
     sales: 24,
     createdAt: new Date().toISOString(),
-    expiresAt: getFutureDateString(15) // Le quedan 15 días
+    expiresAt: getFutureDateString(15)
   }
 ];
 
@@ -186,7 +185,6 @@ export default function App() {
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem('elraizer_products');
     let loaded = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-    // Filtrar expirados de más de 30 días automáticamente
     const now = new Date();
     return loaded.filter(p => !p.expiresAt || new Date(p.expiresAt) > now);
   });
@@ -238,16 +236,16 @@ export default function App() {
   const [pointsToGiveInput, setPointsToGiveInput] = useState('');
   const [pointsError, setPointsError] = useState('');
 
-  // Formulario Publicar Producto Marketplace (Soporta Archivo o Enlace)
+  // Formulario Publicar Producto Marketplace
   const [newProdTitle, setNewProdTitle] = useState('');
   const [newProdCategory, setNewProdCategory] = useState('Software & Apps');
   const [newProdPrice, setNewProdPrice] = useState('');
   const [newProdDescription, setNewProdDescription] = useState('');
-  const [prodImageType, setProdImageType] = useState('url'); // 'url' | 'file'
+  const [prodImageType, setProdImageType] = useState('url');
   const [prodImageUrl, setProdImageUrl] = useState('');
   const [prodImagePreview, setProdImagePreview] = useState('');
 
-  // Inputs
+  // Inputs Feed/Chat
   const [newPostText, setNewPostText] = useState('');
   const [postAttachments, setPostAttachments] = useState([]);
   const postFileInputRef = useRef(null);
@@ -256,39 +254,52 @@ export default function App() {
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
 
-  // BroadcastChannel y Polling para Sincronización Real
+  // Sincronización mediante canal de transmisión (BroadcastChannel) y evento de almacenamiento
   const broadcastChannelRef = useRef(null);
 
   useEffect(() => {
+    // 1. Escuchar evento nativo 'storage' (Se activa entre ventanas con diferentes usuarios/pestañas)
+    const handleStorageChange = (e) => {
+      if (e.key === 'elraizer_dms' && e.newValue) {
+        setDirectMessages(JSON.parse(e.newValue));
+      }
+      if (e.key === 'elraizer_products' && e.newValue) {
+        const fresh = JSON.parse(e.newValue);
+        const now = new Date();
+        setProducts(fresh.filter(p => !p.expiresAt || new Date(p.expiresAt) > now));
+      }
+      if (e.key === 'elraizer_users' && e.newValue) {
+        setUsers(JSON.parse(e.newValue));
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    // 2. BroadcastChannel para comunicación dentro de la misma sesión o pestañas simultáneas
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       const bc = new BroadcastChannel('elraizer_messaging_channel');
       broadcastChannelRef.current = bc;
 
       bc.onmessage = (event) => {
-        if (event.data && event.data.type === 'NEW_DM') {
+        if (event.data?.type === 'NEW_DM') {
           const freshDms = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
           setDirectMessages(freshDms);
-        } else if (event.data && event.data.type === 'USERS_UPDATE') {
+        } else if (event.data?.type === 'PRODUCTS_UPDATE') {
+          const freshProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
+          const now = new Date();
+          setProducts(freshProds.filter(p => !p.expiresAt || new Date(p.expiresAt) > now));
+        } else if (event.data?.type === 'USERS_UPDATE') {
           const freshUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
           setUsers(freshUsers);
-        } else if (event.data && event.data.type === 'PRODUCTS_UPDATE') {
-          const freshProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
-          setProducts(freshProds);
         }
       };
     }
 
+    // 3. Polling de respaldo continuo (1 segundo) para forzar refresco
     const intervalId = setInterval(() => {
       const freshDmsStr = localStorage.getItem('elraizer_dms');
       if (freshDmsStr) {
         const freshDms = JSON.parse(freshDmsStr);
         setDirectMessages(prev => JSON.stringify(prev) !== JSON.stringify(freshDms) ? freshDms : prev);
-      }
-
-      const freshUsersStr = localStorage.getItem('elraizer_users');
-      if (freshUsersStr) {
-        const freshUsers = JSON.parse(freshUsersStr);
-        setUsers(prev => JSON.stringify(prev) !== JSON.stringify(freshUsers) ? freshUsers : prev);
       }
 
       const freshProdsStr = localStorage.getItem('elraizer_products');
@@ -298,9 +309,16 @@ export default function App() {
         const validProds = freshProds.filter(p => !p.expiresAt || new Date(p.expiresAt) > now);
         setProducts(prev => JSON.stringify(prev) !== JSON.stringify(validProds) ? validProds : prev);
       }
-    }, 1500);
+
+      const freshUsersStr = localStorage.getItem('elraizer_users');
+      if (freshUsersStr) {
+        const freshUsers = JSON.parse(freshUsersStr);
+        setUsers(prev => JSON.stringify(prev) !== JSON.stringify(freshUsers) ? freshUsers : prev);
+      }
+    }, 1000);
 
     return () => {
+      window.removeEventListener('storage', handleStorageChange);
       if (broadcastChannelRef.current) broadcastChannelRef.current.close();
       clearInterval(intervalId);
     };
@@ -343,7 +361,6 @@ export default function App() {
   const currentGiven = currentUser?.dailyPointsGiven || 0;
   const remainingDailyPoints = Math.max(0, maxDailyPoints - currentGiven);
 
-  // Manejador para cargar la imagen del producto mediante archivo local
   const handleProductFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -355,7 +372,7 @@ export default function App() {
     }
   };
 
-  // Crear o renovar publicación de producto en Marketplace
+  // FIX COMPLETO PUBLICACIÓN DE PRODUCTO EN MARKETPLACE
   const handlePublishProduct = (e) => {
     e.preventDefault();
     if (!newProdTitle || !newProdPrice || !newProdDescription) return;
@@ -363,7 +380,7 @@ export default function App() {
     const finalImage = prodImageType === 'url' ? (prodImageUrl.trim() || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80') : (prodImagePreview || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80');
 
     const newProduct = {
-      id: 'prod_' + Date.now(),
+      id: 'prod_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       title: newProdTitle.trim(),
       description: newProdDescription.trim(),
       price: parseFloat(newProdPrice) || 0,
@@ -375,18 +392,29 @@ export default function App() {
       rating: 5.0,
       sales: 0,
       createdAt: new Date().toISOString(),
-      expiresAt: getFutureDateString(30) // Expira en 30 días exactos
+      expiresAt: getFutureDateString(30)
     };
 
-    const updatedProds = [newProduct, ...products];
-    setProducts(updatedProds);
+    // 1. Obtener lista fresca de LocalStorage
+    const currentFromStorage = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
+    const updatedProds = [newProduct, ...currentFromStorage];
+
+    // 2. Guardar en LocalStorage primero
     localStorage.setItem('elraizer_products', JSON.stringify(updatedProds));
 
+    // 3. Actualizar Estado de React
+    setProducts(updatedProds);
+
+    // 4. Emitir señal a otras pestañas
     if (broadcastChannelRef.current) {
       broadcastChannelRef.current.postMessage({ type: 'PRODUCTS_UPDATE' });
     }
 
-    // Limpiar formulario y cerrar modal
+    // Resetear filtro a "Todos" para asegurar que el nuevo producto aparezca en pantalla inmediatamente
+    setSelectedCategory('Todos');
+    setMarketSearchQuery('');
+
+    // Limpiar campos y cerrar modal
     setNewProdTitle('');
     setNewProdPrice('');
     setNewProdDescription('');
@@ -395,7 +423,6 @@ export default function App() {
     setShowSellModal(false);
   };
 
-  // Renovar publicación por 30 días adicionales
   const handleRenewProduct = (productId) => {
     const updatedProds = products.map(p => {
       if (p.id === productId) {
@@ -409,10 +436,39 @@ export default function App() {
 
     setProducts(updatedProds);
     localStorage.setItem('elraizer_products', JSON.stringify(updatedProds));
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({ type: 'PRODUCTS_UPDATE' });
+    }
     alert('¡Publicación renovada con éxito por 30 días adicionales!');
   };
 
-  // Admin: Cambiar contraseña de usuario en Panel Maestro
+  // FIX COMPLETO ENVÍO DE MENSAJES PRIVADOS
+  const handleSendDm = () => {
+    if (!dmInput.trim() || !currentUser || !activeDmUser) return;
+    
+    const dm = {
+      id: 'dm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      sender_id: currentUser.id,
+      receiver_id: activeDmUser.id,
+      text: dmInput.trim(),
+      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      read: false
+    };
+
+    // Leer directo de LocalStorage para sincronización atómica
+    const currentDmsFromStorage = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
+    const updatedDms = [...currentDmsFromStorage, dm];
+
+    localStorage.setItem('elraizer_dms', JSON.stringify(updatedDms));
+    setDirectMessages(updatedDms);
+
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({ type: 'NEW_DM', payload: dm });
+    }
+
+    setDmInput('');
+  };
+
   const handleAdminChangePassword = (e) => {
     e.preventDefault();
     if (!selectedAdminUser || !newAdminPassword.trim()) return;
@@ -437,7 +493,6 @@ export default function App() {
     setTimeout(() => setAdminPasswordSuccess(''), 4000);
   };
 
-  // Helper para días restantes antes de expiración
   const getDaysRemaining = (expiresAt) => {
     if (!expiresAt) return 30;
     const now = new Date();
@@ -683,31 +738,6 @@ export default function App() {
     if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'NEW_DM' });
   };
 
-  const handleSendDm = () => {
-    if (!dmInput.trim() || !currentUser || !activeDmUser) return;
-    
-    const dm = {
-      id: 'dm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-      sender_id: currentUser.id,
-      receiver_id: activeDmUser.id,
-      text: dmInput.trim(),
-      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      read: false
-    };
-
-    const currentDmsFromStorage = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
-    const updatedDms = [...currentDmsFromStorage, dm];
-
-    localStorage.setItem('elraizer_dms', JSON.stringify(updatedDms));
-    setDirectMessages(updatedDms);
-
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage({ type: 'NEW_DM', payload: dm });
-    }
-
-    setDmInput('');
-  };
-
   const filteredUsersForDm = users.filter(u => {
     if (u.id === currentUser?.id) return false;
     if (!dmSearchQuery.trim()) return true;
@@ -720,7 +750,6 @@ export default function App() {
     return 0;
   });
 
-  // Filtrado dinámico de Marketplace
   const filteredProducts = products.filter(p => {
     const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
     const matchesQuery = !marketSearchQuery.trim() || p.title.toLowerCase().includes(marketSearchQuery.toLowerCase()) || p.description.toLowerCase().includes(marketSearchQuery.toLowerCase());
@@ -924,7 +953,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MARKETPLACE PROFESIONAL */}
+        {/* TAB MARKETPLACE */}
         {activeTab === 'marketplace' && (
           <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4">
@@ -944,7 +973,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* BARRA DE BÚSQUEDA Y CATEGORÍAS */}
+            {/* BÚSQUEDA Y CATEGORÍAS */}
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
               <div className="relative">
                 <Search size={16} className="absolute left-3.5 top-3 text-[#8b97a8]" />
@@ -957,7 +986,6 @@ export default function App() {
                 />
               </div>
 
-              {/* CHIPS DE CATEGORÍAS */}
               <div className="flex gap-2 overflow-x-auto pb-1 pt-1">
                 {MARKETPLACE_CATEGORIES.map(cat => (
                   <button
@@ -971,7 +999,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* LISTA DE PRODUCTOS */}
+            {/* PRODUCTOS */}
             {filteredProducts.length === 0 ? (
               <div className="text-center py-12 bg-[#161b23] border border-[#2a323d] rounded-2xl p-6">
                 <ShoppingBag size={48} className="mx-auto text-[#8b97a8] mb-3 opacity-50" />
@@ -1248,14 +1276,14 @@ export default function App() {
                   <p className="text-xs text-[#8b97a8]">@{currentUser.username} · {currentUser.email}</p>
                 </div>
               </div>
-              <button onClick={() => setIsEditingProfile(true)} className="px-4 py-2 bg-[#7c5cff] text-white text-xs font-bold rounded-xl flex items-center gap-2"><Edit3 size={16} /> Editar Perfil</button>
+              <button onClick={() => setIsEditingProfile(false)} className="px-4 py-2 bg-[#7c5cff] text-white text-xs font-bold rounded-xl flex items-center gap-2"><Edit3 size={16} /> Editar Perfil</button>
             </div>
             <p className="text-xs text-[#e9eef5] bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">{currentUser.bio || 'Sin biografía especificada.'}</p>
           </div>
         )}
       </main>
 
-      {/* MODAL PUBLICAR PRODUCTO MARKETPLACE (EXPIRACIÓN 30 DÍAS / FOTO POR ENLACE O ARCHIVO) */}
+      {/* MODAL PUBLICAR PRODUCTO MARKETPLACE */}
       {showSellModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#00d4b1]/50 text-[#e9eef5] rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
@@ -1306,7 +1334,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SELECCIÓN DE MÉTODO DE FOTO (ENLACE O ARCHIVO) */}
               <div className="space-y-2">
                 <label className="block text-xs font-semibold text-[#8b97a8]">Imagen del Producto</label>
                 <div className="flex border border-[#2a323d] rounded-xl bg-[#1d242e] p-1 gap-1">
@@ -1426,7 +1453,7 @@ export default function App() {
         </div>
       )}
 
-      {/* PANEL MAESTRO CON REPETICIÓN DE CONTRASEÑA Y DETALLES DE USUARIO */}
+      {/* PANEL MAESTRO */}
       {showAdminModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#ffb020]/40 text-[#e9eef5] rounded-2xl max-w-4xl w-full p-6 space-y-6 shadow-2xl relative max-h-[90vh] flex flex-col">
@@ -1490,7 +1517,6 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* CAJA RECURSO CAMBIAR CONTRASEÑA DE USUARIOS */}
                     <div className="bg-[#161b23] p-3.5 rounded-xl border border-[#7c5cff]/40 space-y-3">
                       <h5 className="text-xs font-bold text-white flex items-center gap-1.5">
                         <KeyRound size={16} className="text-[#ffb020]" /> Cambiar / Restablecer Contraseña de Usuario
@@ -1540,24 +1566,6 @@ export default function App() {
                 )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL EDITAR PERFIL */}
-      {isEditingProfile && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#161b23] border border-[#2a323d] text-[#e9eef5] rounded-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex justify-between items-center border-b border-[#2a323d] pb-2">
-              <h3 className="font-bold text-sm">Editar Datos de Perfil</h3>
-              <button onClick={() => setIsEditingProfile(false)}><X size={18} /></button>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); setIsEditingProfile(false); }} className="space-y-3">
-              <input type="text" value={currentUser.fullName || ''} onChange={(e) => setCurrentUser({ ...currentUser, fullName: e.target.value })} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs" placeholder="Nombre completo" />
-              <input type="text" value={currentUser.headline || ''} onChange={(e) => setCurrentUser({ ...currentUser, headline: e.target.value })} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs" placeholder="Titular profesional" />
-              <textarea value={currentUser.bio || ''} onChange={(e) => setCurrentUser({ ...currentUser, bio: e.target.value })} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs resize-none" placeholder="Biografía" rows="3" />
-              <button type="submit" className="w-full bg-[#7c5cff] text-white font-bold py-2.5 rounded-xl text-xs">Guardar Perfil</button>
-            </form>
           </div>
         </div>
       )}
