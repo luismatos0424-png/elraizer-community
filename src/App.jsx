@@ -27,14 +27,6 @@ const MARKETPLACE_CATEGORIES = [
   'Otros Recursos'
 ];
 
-const RANK_POINTS_LIMITS = {
-  master: 500,
-  moderador: 200,
-  veterano: 100,
-  miembro: 50,
-  nuevo: 20
-};
-
 const INITIAL_USERS = [
   { 
     id: 'ext3-id', 
@@ -133,7 +125,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Main Data
+  // Estados con sincronización directa desde LocalStorage
   const [users, setUsers] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_users');
@@ -243,8 +235,46 @@ export default function App() {
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
 
-  const broadcastChannelRef = useRef(null);
+  const chatEndRef = useRef(null);
+  const dmEndRef = useRef(null);
 
+  // Sincronización en tiempo real con event listener de almacenamiento y polling constante
+  useEffect(() => {
+    const syncData = () => {
+      try {
+        const savedChat = localStorage.getItem('elraizer_chat');
+        if (savedChat) setChatMessages(JSON.parse(savedChat));
+
+        const savedDms = localStorage.getItem('elraizer_dms');
+        if (savedDms) setDirectMessages(JSON.parse(savedDms));
+
+        const savedUsers = localStorage.getItem('elraizer_users');
+        if (savedUsers) setUsers(JSON.parse(savedUsers));
+
+        const savedPosts = localStorage.getItem('elraizer_posts');
+        if (savedPosts) setPosts(JSON.parse(savedPosts));
+
+        const savedProds = localStorage.getItem('elraizer_products');
+        if (savedProds) {
+          const loaded = JSON.parse(savedProds);
+          const now = new Date();
+          setProducts(loaded.filter(p => !p.expiresAt || new Date(p.expiresAt) > now));
+        }
+      } catch (err) {
+        console.error("Sync error:", err);
+      }
+    };
+
+    window.addEventListener('storage', syncData);
+    const timer = setInterval(syncData, 800);
+
+    return () => {
+      window.removeEventListener('storage', syncData);
+      clearInterval(timer);
+    };
+  }, []);
+
+  // Cargar datos de perfil al usuario actual
   useEffect(() => {
     if (currentUser) {
       setProfileFullName(currentUser.fullName || '');
@@ -257,84 +287,76 @@ export default function App() {
     }
   }, [currentUser]);
 
+  // Auto-scroll en Chat Global y Mensajería Privada
   useEffect(() => {
-    const handleStorageChange = (e) => {
-      try {
-        if (e.key === 'elraizer_dms' && e.newValue) setDirectMessages(JSON.parse(e.newValue));
-        if (e.key === 'elraizer_products' && e.newValue) {
-          const fresh = JSON.parse(e.newValue);
-          const now = new Date();
-          setProducts(fresh.filter(p => !p.expiresAt || new Date(p.expiresAt) > now));
-        }
-        if (e.key === 'elraizer_posts' && e.newValue) setPosts(JSON.parse(e.newValue));
-        if (e.key === 'elraizer_users' && e.newValue) setUsers(JSON.parse(e.newValue));
-      } catch (err) {
-        console.error("Storage error:", err);
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      const bc = new BroadcastChannel('elraizer_messaging_channel');
-      broadcastChannelRef.current = bc;
-
-      bc.onmessage = (event) => {
-        try {
-          if (event.data?.type === 'NEW_DM') {
-            const freshDms = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
-            setDirectMessages(freshDms);
-          } else if (event.data?.type === 'PRODUCTS_UPDATE') {
-            const freshProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
-            const now = new Date();
-            setProducts(freshProds.filter(p => !p.expiresAt || new Date(p.expiresAt) > now));
-          } else if (event.data?.type === 'POSTS_UPDATE') {
-            const freshPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
-            setPosts(freshPosts);
-          } else if (event.data?.type === 'USERS_UPDATE') {
-            const freshUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
-            setUsers(freshUsers);
-          }
-        } catch (err) {
-          console.error("Broadcast error:", err);
-        }
-      };
+    if (activeTab === 'chat') {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      if (broadcastChannelRef.current) broadcastChannelRef.current.close();
-    };
-  }, []);
-
-  useEffect(() => { localStorage.setItem('elraizer_users', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('elraizer_posts', JSON.stringify(posts)); }, [posts]);
-  useEffect(() => { localStorage.setItem('elraizer_products', JSON.stringify(products)); }, [products]);
-  useEffect(() => { localStorage.setItem('elraizer_cart', JSON.stringify(cart)); }, [cart]);
-  useEffect(() => { localStorage.setItem('elraizer_chat', JSON.stringify(chatMessages)); }, [chatMessages]);
-  useEffect(() => { localStorage.setItem('elraizer_dms', JSON.stringify(directMessages)); }, [directMessages]);
-  useEffect(() => { localStorage.setItem('elraizer_pinned_dms', JSON.stringify(pinnedUserIds)); }, [pinnedUserIds]);
+  }, [chatMessages, activeTab]);
 
   useEffect(() => {
-    if (currentUser && activeDmUser && activeTab === 'dm') {
-      const hasUnread = directMessages.some(m => m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id && !m.read);
-      if (hasUnread) {
-        setDirectMessages(prev => {
-          const updated = prev.map(m => {
-            if (m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id) {
-              return { ...m, read: true };
-            }
-            return m;
-          });
-          localStorage.setItem('elraizer_dms', JSON.stringify(updated));
-          if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'NEW_DM' });
-          return updated;
-        });
-      }
+    if (activeTab === 'dm' && activeDmUser) {
+      dmEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [activeDmUser, currentUser, activeTab]);
+  }, [directMessages, activeDmUser, activeTab]);
+
+  // Guardar cambios en LocalStorage cuando el estado cambia localmente
+  const updateChat = (newChat) => {
+    setChatMessages(newChat);
+    localStorage.setItem('elraizer_chat', JSON.stringify(newChat));
+  };
+
+  const updateDms = (newDms) => {
+    setDirectMessages(newDms);
+    localStorage.setItem('elraizer_dms', JSON.stringify(newDms));
+  };
+
+  const updateUsersList = (newUsers) => {
+    setUsers(newUsers);
+    localStorage.setItem('elraizer_users', JSON.stringify(newUsers));
+  };
 
   const unreadTotalCount = currentUser ? directMessages.filter(m => m.receiver_id === currentUser.id && !m.read).length : 0;
 
+  // Acciones Chat Global
+  const handleSendGlobalChat = (e) => {
+    if (e) e.preventDefault();
+    if (!chatInput.trim() || !currentUser) return;
+
+    const newMsg = {
+      id: 'm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      user_id: currentUser.id,
+      user_name: currentUser.username,
+      chat_role: currentUser.chat_role || 'miembro',
+      text: chatInput.trim(),
+      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    const currentChat = JSON.parse(localStorage.getItem('elraizer_chat') || '[]');
+    updateChat([...currentChat, newMsg]);
+    setChatInput('');
+  };
+
+  // Acciones Mensajería Directa
+  const handleSendDm = (e) => {
+    if (e) e.preventDefault();
+    if (!dmInput.trim() || !currentUser || !activeDmUser) return;
+    
+    const dm = {
+      id: 'dm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      sender_id: currentUser.id,
+      receiver_id: activeDmUser.id,
+      text: dmInput.trim(),
+      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      read: false
+    };
+
+    const currentDms = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
+    updateDms([...currentDms, dm]);
+    setDmInput('');
+  };
+
+  // Acciones Perfil Maestro & Panel Admin
   const handleSaveProfile = (e) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -350,11 +372,30 @@ export default function App() {
       twitter: profileTwitter
     };
 
-    const updatedUsersList = users.map(u => u.id === currentUser.id ? updatedUser : u);
-    setUsers(updatedUsersList);
+    const currentUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
+    const updatedList = currentUsers.map(u => u.id === currentUser.id ? updatedUser : u);
+    updateUsersList(updatedList);
     setCurrentUser(updatedUser);
     setIsEditingProfile(false);
     alert('Perfil actualizado con éxito.');
+  };
+
+  const handleAdminUserAction = (userId, newStatus, newRole) => {
+    if (currentUser?.role !== 'admin') return;
+
+    const currentUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
+    const updatedList = currentUsers.map(u => {
+      if (u.id === userId) {
+        return {
+          ...u,
+          ...(newStatus ? { status: newStatus } : {}),
+          ...(newRole ? { chat_role: newRole } : {})
+        };
+      }
+      return u;
+    });
+
+    updateUsersList(updatedList);
   };
 
   const executePublishProduct = (e) => {
@@ -384,14 +425,10 @@ export default function App() {
       expiresAt: getFutureDateString(30)
     };
 
-    const currentFromStorage = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
-    const updatedProds = [newProduct, ...currentFromStorage];
+    const currentProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
+    const updatedProds = [newProduct, ...currentProds];
     localStorage.setItem('elraizer_products', JSON.stringify(updatedProds));
     setProducts(updatedProds);
-
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage({ type: 'PRODUCTS_UPDATE' });
-    }
 
     setSelectedCategory('Todos');
     setMarketSearchQuery('');
@@ -423,42 +460,13 @@ export default function App() {
       created_at: 'Ahora mismo'
     };
 
-    const currentPostsFromStorage = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
-    const updatedPosts = [newPost, ...currentPostsFromStorage];
+    const currentPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
+    const updatedPosts = [newPost, ...currentPosts];
     localStorage.setItem('elraizer_posts', JSON.stringify(updatedPosts));
     setPosts(updatedPosts);
 
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage({ type: 'POSTS_UPDATE' });
-    }
-
     setNewPostText('');
     setPostAttachments([]);
-  };
-
-  const handleSendDm = (e) => {
-    if (e) e.preventDefault();
-    if (!dmInput.trim() || !currentUser || !activeDmUser) return;
-    
-    const dm = {
-      id: 'dm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-      sender_id: currentUser.id,
-      receiver_id: activeDmUser.id,
-      text: dmInput.trim(),
-      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      read: false
-    };
-
-    const currentDmsFromStorage = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
-    const updatedDms = [...currentDmsFromStorage, dm];
-    localStorage.setItem('elraizer_dms', JSON.stringify(updatedDms));
-    setDirectMessages(updatedDms);
-
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage({ type: 'NEW_DM', payload: dm });
-    }
-
-    setDmInput('');
   };
 
   const handlePostFileUpload = (e, fileType) => {
@@ -497,7 +505,7 @@ export default function App() {
       
       const loggedUser = { ...found, isOnline: true };
       const updatedList = currentUsersList.map(u => u.id === found.id ? loggedUser : u);
-      setUsers(updatedList);
+      updateUsersList(updatedList);
       setCurrentUser(loggedUser);
     } else {
       setAuthError('Usuario no encontrado.');
@@ -530,9 +538,8 @@ export default function App() {
     };
 
     const updatedUsers = [...users, newUser];
-    setUsers(updatedUsers);
+    updateUsersList(updatedUsers);
     setCurrentUser(newUser);
-    localStorage.setItem('elraizer_users', JSON.stringify(updatedUsers));
   };
 
   const togglePinConversation = (targetUserId, e) => {
@@ -609,7 +616,9 @@ export default function App() {
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
           <button onClick={() => {
-            setUsers(users.map(u => u.id === currentUser.id ? { ...u, isOnline: false } : u));
+            const currentUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
+            const updated = currentUsers.map(u => u.id === currentUser.id ? { ...u, isOnline: false } : u);
+            updateUsersList(updated);
             setCurrentUser(null);
           }} className="p-2 bg-[#ff5470]/20 text-[#ff5470] rounded-xl border border-[#ff5470]/40">
             <LogOut size={18} />
@@ -626,6 +635,9 @@ export default function App() {
           {unreadTotalCount > 0 && <span className="bg-[#ff5470] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-bounce">{unreadTotalCount}</span>}
         </button>
         <button onClick={() => setActiveTab('profile')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'profile' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>👤 Mi Perfil</button>
+        {currentUser.role === 'admin' && (
+          <button onClick={() => setActiveTab('master_panel')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'master_panel' ? 'bg-[#ffb020] text-slate-950 font-bold' : 'text-[#ffb020] hover:bg-[#1d242e]'}`}>🛡️ Panel Maestro</button>
+        )}
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
@@ -787,8 +799,8 @@ export default function App() {
         {activeTab === 'chat' && (
           <div className="bg-[#161b23] border border-[#2a323d] rounded-xl flex flex-col h-[600px]">
             <div className="p-4 border-b border-[#2a323d] font-semibold text-sm flex items-center justify-between">
-              <span>💬 Chat Global · Elraizer</span>
-              <span className="text-xs text-[#00d4b1]">🟢 En línea</span>
+              <span>💬 Chat Global · Elraizer Community</span>
+              <span className="text-xs text-[#00d4b1]">🟢 En vivo</span>
             </div>
             <div className="flex-1 p-4 overflow-y-auto space-y-3">
               {chatMessages.map(m => (
@@ -800,11 +812,20 @@ export default function App() {
                   <div className="text-[9px] text-[#8b97a8] mt-1">{m.created_at}</div>
                 </div>
               ))}
+              <div ref={chatEndRef} />
             </div>
-            <div className="p-3 border-t border-[#2a323d] flex gap-2">
-              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (setChatMessages([...chatMessages, { id: 'm_' + Date.now(), user_id: currentUser.id, user_name: currentUser.username, text: chatInput, created_at: 'Ahora' }]), setChatInput(''))} placeholder="Escribe un mensaje al chat global..." className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff]" />
-              <button onClick={() => { if(chatInput.trim()) { setChatMessages([...chatMessages, { id: 'm_' + Date.now(), user_id: currentUser.id, user_name: currentUser.username, text: chatInput, created_at: 'Ahora' }]); setChatInput(''); }}} className="p-2 bg-[#7c5cff] text-white rounded-xl"><Send size={18} /></button>
-            </div>
+            <form onSubmit={handleSendGlobalChat} className="p-3 border-t border-[#2a323d] flex gap-2">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Escribe un mensaje al chat global..."
+                className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff]"
+              />
+              <button type="submit" className="p-2 bg-[#7c5cff] text-white rounded-xl hover:bg-[#6b47ff] transition-all">
+                <Send size={18} />
+              </button>
+            </form>
           </div>
         )}
 
@@ -877,6 +898,7 @@ export default function App() {
                         <div className="text-[9px] text-[#8b97a8] mt-1">{dm.created_at}</div>
                       </div>
                     ))}
+                    <div ref={dmEndRef} />
                   </div>
 
                   <form onSubmit={handleSendDm} className="p-3 border-t border-[#2a323d] flex gap-2">
@@ -887,7 +909,7 @@ export default function App() {
                       placeholder={`Enviar mensaje a @${activeDmUser.username}...`} 
                       className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff]" 
                     />
-                    <button type="submit" className="p-2 bg-[#7c5cff] text-white rounded-xl">
+                    <button type="submit" className="p-2 bg-[#7c5cff] text-white rounded-xl hover:bg-[#6b47ff] transition-all">
                       <Send size={18} />
                     </button>
                   </form>
@@ -982,6 +1004,69 @@ export default function App() {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB PANEL MAESTRO (SOLO ADMIN) */}
+        {activeTab === 'master_panel' && currentUser.role === 'admin' && (
+          <div className="space-y-6">
+            <div className="bg-[#161b23] border border-[#ffb020]/40 p-6 rounded-2xl">
+              <h2 className="text-2xl font-bold text-[#ffb020] flex items-center gap-2">
+                🛡️ Panel Maestro de Administración
+              </h2>
+              <p className="text-xs text-[#8b97a8] mt-1">Gestión de usuarios, roles del chat y estados de cuenta.</p>
+            </div>
+
+            <div className="bg-[#161b23] border border-[#2a323d] rounded-2xl p-4 space-y-4">
+              <h3 className="font-bold text-sm text-white border-b border-[#2a323d] pb-2">Usuarios Registrados ({users.length})</h3>
+              
+              <div className="space-y-3">
+                {users.map(u => (
+                  <div key={u.id} className="bg-[#1d242e] p-4 rounded-xl border border-[#2a323d] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white" style={{ backgroundColor: u.avatar_color }}>
+                        {u.username[0]}
+                      </div>
+                      <div>
+                        <div className="font-bold text-sm text-white flex items-center gap-2">
+                          @{u.username}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${u.status === 'active' ? 'bg-[#10b981]/20 text-[#10b981]' : u.status === 'suspended' ? 'bg-[#ffb020]/20 text-[#ffb020]' : 'bg-[#ff5470]/20 text-[#ff5470]'}`}>
+                            {u.status.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#8b97a8]">{u.email} · Rol: <span className="text-[#00d4b1] font-semibold">{u.chat_role}</span></p>
+                      </div>
+                    </div>
+
+                    {u.id !== currentUser.id && (
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {u.status === 'active' ? (
+                          <button onClick={() => handleAdminUserAction(u.id, 'suspended')} className="px-3 py-1.5 bg-[#ffb020]/20 text-[#ffb020] border border-[#ffb020]/40 rounded-lg font-semibold hover:bg-[#ffb020]/30">Suspender</button>
+                        ) : (
+                          <button onClick={() => handleAdminUserAction(u.id, 'active')} className="px-3 py-1.5 bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40 rounded-lg font-semibold hover:bg-[#10b981]/30">Reactivar</button>
+                        )}
+                        
+                        {u.status !== 'banned' && (
+                          <button onClick={() => handleAdminUserAction(u.id, 'banned')} className="px-3 py-1.5 bg-[#ff5470]/20 text-[#ff5470] border border-[#ff5470]/40 rounded-lg font-semibold hover:bg-[#ff5470]/30">Banear</button>
+                        )}
+
+                        <select
+                          value={u.chat_role}
+                          onChange={(e) => handleAdminUserAction(u.id, null, e.target.value)}
+                          className="bg-[#161b23] border border-[#2a323d] rounded-lg px-2 py-1 text-xs text-white"
+                        >
+                          <option value="nuevo">Nuevo</option>
+                          <option value="miembro">Miembro</option>
+                          <option value="veterano">Veterano</option>
+                          <option value="moderador">Moderador</option>
+                          <option value="master">Master</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
