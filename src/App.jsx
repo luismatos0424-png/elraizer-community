@@ -81,29 +81,6 @@ const INITIAL_USERS = [
     joinedDate: 'Enero 2025',
     status: 'active',
     isOnline: true
-  },
-  { 
-    id: 'usr_demo2', 
-    email: 'sora@elraizer.com', 
-    username: 'SoraCode', 
-    password: 'User1234*', 
-    fullName: 'Soraia Vivas',
-    headline: 'Diseñadora UI/UX',
-    bio: 'Especialista en prototipado y diseño de interfaces dark mode.', 
-    location: 'Medellín, Colombia',
-    website: '',
-    github: 'soracode',
-    twitter: '',
-    avatar_url: '',
-    banner_url: '',
-    avatar_color: '#ec4899', 
-    role: 'user', 
-    chat_role: 'miembro', 
-    points: 340, 
-    dailyPointsGiven: 0,
-    joinedDate: 'Febrero 2025',
-    status: 'active',
-    isOnline: false
   }
 ];
 
@@ -143,21 +120,6 @@ const INITIAL_PRODUCTS = [
     sales: 18,
     createdAt: new Date().toISOString(),
     expiresAt: getFutureDateString(28)
-  },
-  {
-    id: 'prod_2',
-    title: 'Plantilla Premium Single-Page WebView',
-    description: 'Diseño responsive ultrafino optimizado para portales comunitarios y paneles e-commerce.',
-    price: 45.00,
-    category: 'Plantillas & UI Kits',
-    seller_id: 'usr_demo1',
-    seller_name: 'DevUser',
-    seller_color: '#3b82f6',
-    image: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=600&auto=format&fit=crop&q=80',
-    rating: 5.0,
-    sales: 24,
-    createdAt: new Date().toISOString(),
-    expiresAt: getFutureDateString(15)
   }
 ];
 
@@ -171,7 +133,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Main Data con inicialización segura
+  // Main Data
   const [users, setUsers] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_users');
@@ -224,9 +186,7 @@ export default function App() {
   const [directMessages, setDirectMessages] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_dms');
-      return saved ? JSON.parse(saved) : [
-        { id: 'dm_init', sender_id: 'usr_demo1', receiver_id: 'ext3-id', text: '¡Hola EXT3! Excelente trabajo con la comunidad.', created_at: '10:30 AM', read: false }
-      ];
+      return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
     }
@@ -241,17 +201,28 @@ export default function App() {
     }
   });
 
-  // Navigation & Marketplace Filters
+  // Navigation
   const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
   const [dmSearchQuery, setDmSearchQuery] = useState('');
 
+  // Marketplace Filters
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [marketSearchQuery, setMarketSearchQuery] = useState('');
 
-  // Modals & State
+  // Modals & Profile Edit State
   const [showCartModal, setShowCartModal] = useState(false);
   const [showSellModal, setShowSellModal] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+
+  // Profile Form State
+  const [profileFullName, setProfileFullName] = useState('');
+  const [profileHeadline, setProfileHeadline] = useState('');
+  const [profileBio, setProfileBio] = useState('');
+  const [profileLocation, setProfileLocation] = useState('');
+  const [profileWebsite, setProfileWebsite] = useState('');
+  const [profileGithub, setProfileGithub] = useState('');
+  const [profileTwitter, setProfileTwitter] = useState('');
 
   // Formulario Publicar Producto Marketplace
   const [newProdTitle, setNewProdTitle] = useState('');
@@ -273,6 +244,18 @@ export default function App() {
   const [dmInput, setDmInput] = useState('');
 
   const broadcastChannelRef = useRef(null);
+
+  useEffect(() => {
+    if (currentUser) {
+      setProfileFullName(currentUser.fullName || '');
+      setProfileHeadline(currentUser.headline || '');
+      setProfileBio(currentUser.bio || '');
+      setProfileLocation(currentUser.location || '');
+      setProfileWebsite(currentUser.website || '');
+      setProfileGithub(currentUser.github || '');
+      setProfileTwitter(currentUser.twitter || '');
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     const handleStorageChange = (e) => {
@@ -317,46 +300,12 @@ export default function App() {
       };
     }
 
-    const intervalId = setInterval(() => {
-      try {
-        const freshDmsStr = localStorage.getItem('elraizer_dms');
-        if (freshDmsStr) {
-          const freshDms = JSON.parse(freshDmsStr);
-          setDirectMessages(prev => JSON.stringify(prev) !== JSON.stringify(freshDms) ? freshDms : prev);
-        }
-
-        const freshProdsStr = localStorage.getItem('elraizer_products');
-        if (freshProdsStr) {
-          const freshProds = JSON.parse(freshProdsStr);
-          const now = new Date();
-          const validProds = freshProds.filter(p => !p.expiresAt || new Date(p.expiresAt) > now);
-          setProducts(prev => JSON.stringify(prev) !== JSON.stringify(validProds) ? validProds : prev);
-        }
-
-        const freshPostsStr = localStorage.getItem('elraizer_posts');
-        if (freshPostsStr) {
-          const freshPosts = JSON.parse(freshPostsStr);
-          setPosts(prev => JSON.stringify(prev) !== JSON.stringify(freshPosts) ? freshPosts : prev);
-        }
-
-        const freshUsersStr = localStorage.getItem('elraizer_users');
-        if (freshUsersStr) {
-          const freshUsers = JSON.parse(freshUsersStr);
-          setUsers(prev => JSON.stringify(prev) !== JSON.stringify(freshUsers) ? freshUsers : prev);
-        }
-      } catch (err) {
-        console.error("Polling error:", err);
-      }
-    }, 1000);
-
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       if (broadcastChannelRef.current) broadcastChannelRef.current.close();
-      clearInterval(intervalId);
     };
   }, []);
 
-  // Sync LocalStorage
   useEffect(() => { localStorage.setItem('elraizer_users', JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem('elraizer_posts', JSON.stringify(posts)); }, [posts]);
   useEffect(() => { localStorage.setItem('elraizer_products', JSON.stringify(products)); }, [products]);
@@ -365,7 +314,6 @@ export default function App() {
   useEffect(() => { localStorage.setItem('elraizer_dms', JSON.stringify(directMessages)); }, [directMessages]);
   useEffect(() => { localStorage.setItem('elraizer_pinned_dms', JSON.stringify(pinnedUserIds)); }, [pinnedUserIds]);
 
-  // Status de lectura DMs
   useEffect(() => {
     if (currentUser && activeDmUser && activeTab === 'dm') {
       const hasUnread = directMessages.some(m => m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id && !m.read);
@@ -383,9 +331,31 @@ export default function App() {
         });
       }
     }
-  }, [activeDmUser, currentUser, activeTab, directMessages]);
+  }, [activeDmUser, currentUser, activeTab]);
 
   const unreadTotalCount = currentUser ? directMessages.filter(m => m.receiver_id === currentUser.id && !m.read).length : 0;
+
+  const handleSaveProfile = (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+
+    const updatedUser = {
+      ...currentUser,
+      fullName: profileFullName,
+      headline: profileHeadline,
+      bio: profileBio,
+      location: profileLocation,
+      website: profileWebsite,
+      github: profileGithub,
+      twitter: profileTwitter
+    };
+
+    const updatedUsersList = users.map(u => u.id === currentUser.id ? updatedUser : u);
+    setUsers(updatedUsersList);
+    setCurrentUser(updatedUser);
+    setIsEditingProfile(false);
+    alert('Perfil actualizado con éxito.');
+  };
 
   const executePublishProduct = (e) => {
     if (e) e.preventDefault();
@@ -414,13 +384,7 @@ export default function App() {
       expiresAt: getFutureDateString(30)
     };
 
-    let currentFromStorage = [];
-    try {
-      currentFromStorage = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
-    } catch {
-      currentFromStorage = products;
-    }
-
+    const currentFromStorage = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
     const updatedProds = [newProduct, ...currentFromStorage];
     localStorage.setItem('elraizer_products', JSON.stringify(updatedProds));
     setProducts(updatedProds);
@@ -431,7 +395,6 @@ export default function App() {
 
     setSelectedCategory('Todos');
     setMarketSearchQuery('');
-
     setNewProdTitle('');
     setNewProdPrice('');
     setNewProdDescription('');
@@ -442,7 +405,6 @@ export default function App() {
 
   const handleCreatePost = (e) => {
     if (e) e.preventDefault();
-
     if (!newPostText.trim() && postAttachments.length === 0) {
       alert('Escribe un texto o adjunta una imagen/archivo para publicar.');
       return;
@@ -461,13 +423,7 @@ export default function App() {
       created_at: 'Ahora mismo'
     };
 
-    let currentPostsFromStorage = [];
-    try {
-      currentPostsFromStorage = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
-    } catch {
-      currentPostsFromStorage = posts;
-    }
-
+    const currentPostsFromStorage = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
     const updatedPosts = [newPost, ...currentPostsFromStorage];
     localStorage.setItem('elraizer_posts', JSON.stringify(updatedPosts));
     setPosts(updatedPosts);
@@ -493,13 +449,7 @@ export default function App() {
       read: false
     };
 
-    let currentDmsFromStorage = [];
-    try {
-      currentDmsFromStorage = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
-    } catch {
-      currentDmsFromStorage = directMessages;
-    }
-
+    const currentDmsFromStorage = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
     const updatedDms = [...currentDmsFromStorage, dm];
     localStorage.setItem('elraizer_dms', JSON.stringify(updatedDms));
     setDirectMessages(updatedDms);
@@ -509,22 +459,6 @@ export default function App() {
     }
 
     setDmInput('');
-  };
-
-  const handleRenewProduct = (productId) => {
-    const updatedProds = products.map(p => {
-      if (p.id === productId) {
-        return { ...p, expiresAt: getFutureDateString(30) };
-      }
-      return p;
-    });
-
-    setProducts(updatedProds);
-    localStorage.setItem('elraizer_products', JSON.stringify(updatedProds));
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage({ type: 'PRODUCTS_UPDATE' });
-    }
-    alert('¡Publicación renovada con éxito por 30 días adicionales!');
   };
 
   const handlePostFileUpload = (e, fileType) => {
@@ -550,13 +484,8 @@ export default function App() {
   const handleLogin = (e) => {
     e.preventDefault();
     setAuthError('');
-    let currentUsersList = users;
-    try {
-      const savedUsers = localStorage.getItem('elraizer_users');
-      if (savedUsers) currentUsersList = JSON.parse(savedUsers);
-    } catch {
-      currentUsersList = users;
-    }
+    const savedUsers = localStorage.getItem('elraizer_users');
+    const currentUsersList = savedUsers ? JSON.parse(savedUsers) : users;
 
     const inputClean = identifier.trim().toLowerCase();
     const found = currentUsersList.find(u => u.email.toLowerCase() === inputClean || u.username.toLowerCase() === inputClean);
@@ -615,27 +544,6 @@ export default function App() {
     }
   };
 
-  const handleClearChatHistory = (targetUserId, e) => {
-    if (e) e.stopPropagation();
-    if (window.confirm('¿Deseas vaciar todo el historial de conversaciones con este usuario?')) {
-      const updated = directMessages.filter(dm => 
-        !(dm.sender_id === currentUser.id && dm.receiver_id === targetUserId) &&
-        !(dm.sender_id === targetUserId && dm.receiver_id === currentUser.id)
-      );
-      setDirectMessages(updated);
-      localStorage.setItem('elraizer_dms', JSON.stringify(updated));
-      if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'NEW_DM' });
-      if (activeDmUser?.id === targetUserId) setActiveDmUser(null);
-    }
-  };
-
-  const handleDeleteSingleDm = (dmId) => {
-    const updated = directMessages.filter(dm => dm.id !== dmId);
-    setDirectMessages(updated);
-    localStorage.setItem('elraizer_dms', JSON.stringify(updated));
-    if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'NEW_DM' });
-  };
-
   const filteredUsersForDm = users.filter(u => {
     if (u.id === currentUser?.id) return false;
     if (!dmSearchQuery.trim()) return true;
@@ -661,13 +569,6 @@ export default function App() {
           <div className="flex flex-col justify-center space-y-4">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">◈ Elraizer Community</h1>
             <p className="text-[#8b97a8]">Comunidad, Marketplace, Mensajería Directa y Panel Maestro.</p>
-            <div className="flex flex-col gap-2 pt-2">
-              <span className="text-xs text-[#8b97a8]">Cuentas de prueba rápida:</span>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => { setCurrentUser(INITIAL_USERS[0]); setUsers(INITIAL_USERS); }} className="px-3 py-1.5 bg-[#ffb020]/20 text-[#ffb020] border border-[#ffb020]/40 rounded-lg text-xs font-bold">Admin (EXT3)</button>
-                <button type="button" onClick={() => { setCurrentUser(INITIAL_USERS[1]); setUsers(INITIAL_USERS); }} className="px-3 py-1.5 bg-[#3b82f6]/20 text-[#3b82f6] border border-[#3b82f6]/40 rounded-lg text-xs font-bold">Usuario (DevUser)</button>
-              </div>
-            </div>
           </div>
           <div className="bg-[#1d242e] p-6 rounded-xl border border-[#2a323d] space-y-4">
             <div className="flex border-b border-[#2a323d] mb-4">
@@ -728,6 +629,7 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
+        {/* TAB FEED */}
         {activeTab === 'feed' && (
           <div className="space-y-4">
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
@@ -784,7 +686,7 @@ export default function App() {
               <div key={p.id} className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: p.author_color }}>
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white" style={{ backgroundColor: p.author_color }}>
                       {p.author_name[0]}
                     </div>
                     <div>
@@ -796,11 +698,27 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-sm leading-relaxed">{p.text}</p>
+                {p.attachments && p.attachments.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                    {p.attachments.map(att => (
+                      <div key={att.id} className="bg-[#1d242e] p-2 rounded-xl border border-[#2a323d] overflow-hidden">
+                        {att.type === 'image' && <img src={att.url} alt={att.name} className="w-full h-48 object-cover rounded-lg" />}
+                        {att.type === 'video' && <video src={att.url} controls className="w-full h-48 object-cover rounded-lg" />}
+                        {att.type === 'file' && (
+                          <a href={att.url} download={att.name} className="flex items-center gap-2 p-3 text-xs text-[#00d4b1] font-semibold hover:underline">
+                            <Paperclip size={18} /> Descargar {att.name}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
 
+        {/* TAB MARKETPLACE */}
         {activeTab === 'marketplace' && (
           <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4">
@@ -845,35 +763,27 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredProducts.map(prod => {
-                const isOwner = currentUser?.id === prod.seller_id;
-                return (
-                  <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden flex flex-col justify-between group p-4 space-y-3">
-                    <img src={prod.image} alt={prod.title} className="w-full h-48 object-cover rounded-xl" />
-                    <div>
-                      <h3 className="font-bold text-base text-[#e9eef5]">{prod.title}</h3>
-                      <p className="text-xs text-[#8b97a8] line-clamp-2">{prod.description}</p>
-                    </div>
-                    <div className="flex items-center justify-between border-t border-[#2a323d] pt-3">
-                      <span className="text-xl font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</span>
-                      <div className="flex gap-2">
-                        {isOwner && (
-                          <button onClick={() => handleRenewProduct(prod.id)} className="px-3 py-1.5 bg-[#ffb020]/20 text-[#ffb020] border border-[#ffb020]/40 text-xs font-bold rounded-xl flex items-center gap-1">
-                            <RefreshCw size={14} /> Renovar
-                          </button>
-                        )}
-                        <button onClick={() => setCart([...cart, { ...prod, qty: 1 }])} className="px-3.5 py-1.5 bg-[#7c5cff] text-white text-xs font-bold rounded-xl flex items-center gap-1">
-                          <ShoppingCart size={14} /> Comprar
-                        </button>
-                      </div>
-                    </div>
+              {filteredProducts.map(prod => (
+                <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden flex flex-col justify-between group p-4 space-y-3">
+                  <img src={prod.image} alt={prod.title} className="w-full h-48 object-cover rounded-xl" />
+                  <div>
+                    <span className="text-[10px] bg-[#7c5cff]/20 text-[#7c5cff] font-bold px-2 py-0.5 rounded-full uppercase">{prod.category}</span>
+                    <h3 className="font-bold text-base text-[#e9eef5] mt-1">{prod.title}</h3>
+                    <p className="text-xs text-[#8b97a8] line-clamp-2">{prod.description}</p>
                   </div>
-                );
-              })}
+                  <div className="flex items-center justify-between border-t border-[#2a323d] pt-3">
+                    <span className="text-xl font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</span>
+                    <button onClick={() => setCart([...cart, { ...prod, qty: 1 }])} className="px-3.5 py-1.5 bg-[#7c5cff] text-white text-xs font-bold rounded-xl flex items-center gap-1">
+                      <ShoppingCart size={14} /> Comprar
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
+        {/* TAB CHAT GLOBAL */}
         {activeTab === 'chat' && (
           <div className="bg-[#161b23] border border-[#2a323d] rounded-xl flex flex-col h-[600px]">
             <div className="p-4 border-b border-[#2a323d] font-semibold text-sm flex items-center justify-between">
@@ -898,6 +808,7 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB MENSAJERÍA DIRECTA */}
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-3 flex flex-col">
@@ -924,7 +835,7 @@ export default function App() {
                       className={`w-full p-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer group ${activeDmUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] hover:bg-[#2a323d]'}`}
                     >
                       <div className="flex items-center gap-2 truncate">
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs relative" style={{ backgroundColor: u.avatar_color }}>
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs relative text-white" style={{ backgroundColor: u.avatar_color }}>
                           {u.username[0]}
                         </div>
                         <div className="truncate">
@@ -947,14 +858,11 @@ export default function App() {
                 <>
                   <div className="p-3 border-b border-[#2a323d] font-semibold text-sm flex items-center justify-between bg-[#1d242e]/50">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: activeDmUser.avatar_color }}>
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: activeDmUser.avatar_color }}>
                         {activeDmUser.username[0]}
                       </div>
                       <span className="text-xs font-bold text-white">@{activeDmUser.username}</span>
                     </div>
-                    <button onClick={(e) => handleClearChatHistory(activeDmUser.id, e)} className="px-2.5 py-1 bg-[#ff5470]/20 text-[#ff5470] border border-[#ff5470]/30 rounded-lg text-xs font-semibold flex items-center gap-1">
-                      <Trash2 size={14} /> Vaciar Conversación
-                    </button>
                   </div>
 
                   <div className="flex-1 p-4 overflow-y-auto space-y-3">
@@ -963,11 +871,8 @@ export default function App() {
                       (dm.sender_id === activeDmUser.id && dm.receiver_id === currentUser.id)
                     ).map(dm => (
                       <div key={dm.id} className={`flex flex-col group ${dm.sender_id === currentUser.id ? 'items-end' : 'items-start'}`}>
-                        <div className="flex items-center gap-1">
-                          <div className={`p-3 rounded-2xl max-w-xs text-sm ${dm.sender_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>
-                            {dm.text}
-                          </div>
-                          <button onClick={() => handleDeleteSingleDm(dm.id)} className="opacity-0 group-hover:opacity-100 p-1 text-[#ff5470]"><X size={12} /></button>
+                        <div className={`p-3 rounded-2xl max-w-xs text-sm ${dm.sender_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>
+                          {dm.text}
                         </div>
                         <div className="text-[9px] text-[#8b97a8] mt-1">{dm.created_at}</div>
                       </div>
@@ -996,22 +901,94 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB MI PERFIL COMPLETO RESTAURADO */}
         {activeTab === 'profile' && (
-          <div className="bg-[#161b23] border border-[#2a323d] rounded-2xl p-6 space-y-4">
-            <div className="flex items-center gap-4 border-b border-[#2a323d] pb-4">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-2xl text-white" style={{ backgroundColor: currentUser.avatar_color }}>
-                {currentUser.username[0]}
+          <div className="space-y-6">
+            <div className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden shadow-xl">
+              <div 
+                className="h-44 w-full bg-cover bg-center relative"
+                style={{ backgroundImage: `url(${currentUser.banner_url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80'})` }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-t from-[#161b23] via-transparent to-transparent" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-white">{currentUser.fullName || currentUser.username}</h2>
-                <p className="text-xs text-[#7c5cff]">@{currentUser.username} · {currentUser.email}</p>
+
+              <div className="px-6 pb-6 relative">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end -mt-16 mb-4 gap-4">
+                  <div className="flex items-end gap-4">
+                    <div 
+                      className="w-24 h-24 rounded-2xl border-4 border-[#161b23] flex items-center justify-center font-extrabold text-3xl text-white shadow-2xl relative"
+                      style={{ backgroundColor: currentUser.avatar_color }}
+                    >
+                      {currentUser.username[0]}
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">{currentUser.fullName || currentUser.username}</h2>
+                      <p className="text-xs text-[#7c5cff] font-semibold">@{currentUser.username}</p>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => setIsEditingProfile(!isEditingProfile)}
+                    className="px-4 py-2 bg-[#1d242e] hover:bg-[#2a323d] border border-[#2a323d] text-white rounded-xl text-xs font-bold flex items-center gap-2"
+                  >
+                    <Edit3 size={14} /> {isEditingProfile ? 'Cancelar Edición' : 'Editar Perfil'}
+                  </button>
+                </div>
+
+                {isEditingProfile ? (
+                  <form onSubmit={handleSaveProfile} className="space-y-4 bg-[#1d242e] p-5 rounded-xl border border-[#2a323d] mt-4">
+                    <h3 className="font-bold text-sm text-[#00d4b1] border-b border-[#2a323d] pb-2">Editar Datos de Perfil</h3>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#8b97a8] mb-1">Nombre Completo</label>
+                        <input type="text" value={profileFullName} onChange={(e) => setProfileFullName(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-2.5 text-xs text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#8b97a8] mb-1">Titular / Rol Profesional</label>
+                        <input type="text" value={profileHeadline} onChange={(e) => setProfileHeadline(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-2.5 text-xs text-white" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#8b97a8] mb-1">Biografía</label>
+                      <textarea rows="2" value={profileBio} onChange={(e) => setProfileBio(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-2.5 text-xs text-white resize-none" />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#8b97a8] mb-1">Ubicación</label>
+                        <input type="text" value={profileLocation} onChange={(e) => setProfileLocation(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-2.5 text-xs text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#8b97a8] mb-1">Sitio Web</label>
+                        <input type="text" value={profileWebsite} onChange={(e) => setProfileWebsite(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-2.5 text-xs text-white" />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button type="submit" className="px-5 py-2 bg-[#7c5cff] text-white font-bold text-xs rounded-xl shadow-md">Guardar Cambios</button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-xs text-[#8b97a8] font-medium">{currentUser.headline || 'Sin titular especificado.'}</p>
+                    <p className="text-xs text-[#e9eef5] bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">{currentUser.bio || 'Sin biografía especificada.'}</p>
+
+                    <div className="flex flex-wrap gap-4 text-xs text-[#8b97a8] border-t border-[#2a323d] pt-3">
+                      {currentUser.location && <span className="flex items-center gap-1"><MapPin size={14} className="text-[#00d4b1]" /> {currentUser.location}</span>}
+                      {currentUser.website && <a href={currentUser.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[#7c5cff] hover:underline"><Globe size={14} /> {currentUser.website}</a>}
+                      <span className="flex items-center gap-1"><Calendar size={14} /> Miembro desde: {currentUser.joinedDate || 'Reciente'}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-            <p className="text-xs text-[#e9eef5] bg-[#1d242e] p-3 rounded-xl border border-[#2a323d]">{currentUser.bio || 'Sin biografía especificada.'}</p>
           </div>
         )}
       </main>
 
+      {/* MODAL PUBLICAR PRODUCTO */}
       {showSellModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#00d4b1]/50 text-[#e9eef5] rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
@@ -1085,6 +1062,7 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL CARRITO */}
       {showCartModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#2a323d] text-[#e9eef5] rounded-2xl max-w-md w-full p-6 space-y-4">
