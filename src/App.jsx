@@ -131,18 +131,14 @@ export default function App() {
     try {
       const saved = localStorage.getItem('elraizer_users');
       return saved ? JSON.parse(saved) : INITIAL_USERS;
-    } catch {
-      return INITIAL_USERS;
-    }
+    } catch { return INITIAL_USERS; }
   });
 
   const [posts, setPosts] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_posts');
       return saved ? JSON.parse(saved) : INITIAL_POSTS;
-    } catch {
-      return INITIAL_POSTS;
-    }
+    } catch { return INITIAL_POSTS; }
   });
 
   const [products, setProducts] = useState(() => {
@@ -151,18 +147,14 @@ export default function App() {
       let loaded = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
       const now = new Date();
       return loaded.filter(p => !p.expiresAt || new Date(p.expiresAt) > now);
-    } catch {
-      return INITIAL_PRODUCTS;
-    }
+    } catch { return INITIAL_PRODUCTS; }
   });
 
   const [cart, setCart] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_cart');
       return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   });
 
   const [chatMessages, setChatMessages] = useState(() => {
@@ -171,27 +163,21 @@ export default function App() {
       return saved ? JSON.parse(saved) : [
         { id: 'm1', user_id: 'ext3-id', user_name: 'EXT3', chat_role: 'master', text: 'Chat global activo. Recuerden mantener el respeto.', created_at: '12:00' }
       ];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   });
 
   const [directMessages, setDirectMessages] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_dms');
       return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   });
 
   const [pinnedUserIds, setPinnedUserIds] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_pinned_dms');
       return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   });
 
   // Navigation
@@ -233,13 +219,13 @@ export default function App() {
   const [prodImageType, setProdImageType] = useState('url');
   const [prodImageUrl, setProdImageUrl] = useState('');
   const [prodImagePreview, setProdImagePreview] = useState('');
+  const prodFileInputRef = useRef(null);
 
   // Inputs Feed/Chat
   const [newPostText, setNewPostText] = useState('');
   const [postAttachments, setPostAttachments] = useState([]);
   const postFileInputRef = useRef(null);
   const postVideoInputRef = useRef(null);
-  const postGeneralFileInputRef = useRef(null);
 
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
@@ -269,13 +255,17 @@ export default function App() {
           const now = new Date();
           setProducts(loaded.filter(p => !p.expiresAt || new Date(p.expiresAt) > now));
         }
+        
+        const savedCart = localStorage.getItem('elraizer_cart');
+        if (savedCart) setCart(JSON.parse(savedCart));
+
       } catch (err) {
         console.error("Sync error:", err);
       }
     };
 
     window.addEventListener('storage', syncData);
-    const timer = setInterval(syncData, 800);
+    const timer = setInterval(syncData, 1000);
 
     return () => {
       window.removeEventListener('storage', syncData);
@@ -327,6 +317,20 @@ export default function App() {
     setProducts(newProds);
     localStorage.setItem('elraizer_products', JSON.stringify(newProds));
   };
+  const updateCart = (newCart) => {
+    setCart(newCart);
+    localStorage.setItem('elraizer_cart', JSON.stringify(newCart));
+  };
+
+  const addToCart = (prod) => {
+    const existing = cart.find(p => p.id === prod.id);
+    if (existing) {
+      updateCart(cart.map(p => p.id === prod.id ? { ...p, qty: p.qty + 1 } : p));
+    } else {
+      updateCart([...cart, { ...prod, qty: 1 }]);
+    }
+    alert(`Agregado al carrito: ${prod.title}`);
+  };
 
   const unreadTotalCount = currentUser ? directMessages.filter(m => m.receiver_id === currentUser.id && !m.read).length : 0;
   const onlineUsersCount = users.filter(u => u.isOnline).length;
@@ -365,27 +369,48 @@ export default function App() {
 
   const handleVotePost = (postId) => {
     if (!currentUser) return;
+    const targetPost = posts.find(p => p.id === postId);
+    if (!targetPost) return;
+    if (targetPost.author_id === currentUser.id) return alert("No puedes darle like a tu propio post.");
+
     const currentPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
     const updated = currentPosts.map(p => {
       if (p.id === postId) {
         const votedBy = p.votedBy || [];
         if (votedBy.includes(currentUser.id)) return p;
-        return {
-          ...p,
-          votes: (p.votes || 0) + 1,
-          votedBy: [...votedBy, currentUser.id]
-        };
+        return { ...p, votes: (p.votes || 0) + 1, votedBy: [...votedBy, currentUser.id] };
       }
       return p;
     });
 
-    const targetPost = currentPosts.find(p => p.id === postId);
-    if (targetPost && !(targetPost.votedBy || []).includes(currentUser.id)) {
+    if (!(targetPost.votedBy || []).includes(currentUser.id)) {
       const currentUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
       const updatedUsers = currentUsers.map(u => u.id === targetPost.author_id ? { ...u, points: (u.points || 0) + 1 } : u);
       updateUsersList(updatedUsers);
+      if (currentUser.id === targetPost.author_id) {
+         setCurrentUser(updatedUsers.find(u => u.id === currentUser.id));
+      }
     }
     updatePostsList(updated);
+  };
+
+  const handleDonatePoints = (postId, authorId) => {
+    if (!currentUser) return;
+    if (currentUser.id === authorId) return alert("No puedes donarte puntos a ti mismo.");
+    if ((currentUser.points || 0) < 5) return alert("No tienes suficientes puntos. Necesitas al menos 5 pts para donar.");
+    
+    if (!window.confirm("¿Deseas donar 5 puntos de tu saldo a este usuario para premiar su publicación?")) return;
+
+    const currentUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
+    const updatedUsers = currentUsers.map(u => {
+      if (u.id === currentUser.id) return { ...u, points: u.points - 5 };
+      if (u.id === authorId) return { ...u, points: (u.points || 0) + 5 };
+      return u;
+    });
+    
+    updateUsersList(updatedUsers);
+    setCurrentUser(updatedUsers.find(u => u.id === currentUser.id));
+    alert("¡Has donado 5 puntos exitosamente!");
   };
 
   const handleSaveProfile = (e) => {
@@ -457,6 +482,41 @@ export default function App() {
     updateProductsList(currentProds.filter(p => p.id !== prodId));
   };
 
+  const compressImage = (file, callback) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      const MAX_DIM = 800; 
+      
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width > height) {
+          height = Math.floor(height * (MAX_DIM / width));
+          width = MAX_DIM;
+        } else {
+          width = Math.floor(width * (MAX_DIM / height));
+          height = MAX_DIM;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      callback(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.src = URL.createObjectURL(file);
+  };
+
+  const handleProductImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    compressImage(file, (dataUrl) => {
+      setProdImagePreview(dataUrl);
+      setProdImageType('upload');
+    });
+  };
+
   const executePublishProduct = (e) => {
     if (e) e.preventDefault();
     if (!newProdTitle.trim() || !newProdPrice || !newProdDescription.trim()) {
@@ -497,57 +557,22 @@ export default function App() {
     setNewPostText(''); setPostAttachments([]);
   };
 
-  // Corrección crítica: Compresión de imágenes para no desbordar localStorage
   const handlePostFileUpload = (e, fileType) => {
     const files = Array.from(e.target.files);
     files.forEach(file => {
       if (fileType === 'image' || file.type.startsWith('image/')) {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX_DIM = 800; // Redimensionar si es muy grande
-          
-          if (width > MAX_DIM || height > MAX_DIM) {
-            if (width > height) {
-              height = Math.floor(height * (MAX_DIM / width));
-              width = MAX_DIM;
-            } else {
-              width = Math.floor(width * (MAX_DIM / height));
-              height = MAX_DIM;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          
-          // Comprimir como JPEG calidad 0.7 para que entre en localStorage
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          
+        compressImage(file, (dataUrl) => {
           try {
-            setPostAttachments(prev => [...prev, {
-              id: 'att_' + Date.now() + Math.random(),
-              name: file.name,
-              type: 'image',
-              url: dataUrl
-            }]);
+            setPostAttachments(prev => [...prev, { id: 'att_' + Date.now() + Math.random(), name: file.name, type: 'image', url: dataUrl }]);
           } catch (err) {
             alert('Error: La imagen es demasiado pesada incluso tras compresión. Intenta con otra.');
           }
-        };
-        img.src = URL.createObjectURL(file);
+        });
       } else {
         const reader = new FileReader();
         reader.onloadend = () => {
           try {
-            setPostAttachments(prev => [...prev, {
-              id: 'att_' + Date.now() + Math.random(),
-              name: file.name,
-              type: fileType || 'file',
-              url: reader.result
-            }]);
+            setPostAttachments(prev => [...prev, { id: 'att_' + Date.now() + Math.random(), name: file.name, type: fileType || 'file', url: reader.result }]);
           } catch(err) {
              alert('Error: Archivo muy pesado para el almacenamiento local temporal.');
           }
@@ -603,15 +628,6 @@ export default function App() {
     setCurrentUser(newUser);
   };
 
-  const togglePinConversation = (targetUserId, e) => {
-    e.stopPropagation();
-    if (pinnedUserIds.includes(targetUserId)) {
-      setPinnedUserIds(pinnedUserIds.filter(id => id !== targetUserId));
-    } else {
-      setPinnedUserIds([...pinnedUserIds, targetUserId]);
-    }
-  };
-
   const filteredUsersForDm = users.filter(u => {
     if (u.id === currentUser?.id) return false;
     if (!dmSearchQuery.trim()) return true;
@@ -633,8 +649,6 @@ export default function App() {
     if (priceSort === 'high_low') return b.price - a.price;
     return 0;
   });
-
-  const myProducts = products.filter(p => p.seller_id === currentUser?.id);
 
   if (!currentUser) {
     return (
@@ -682,7 +696,7 @@ export default function App() {
           <button onClick={() => setShowCartModal(true)} className="relative p-2 bg-[#1d242e] hover:bg-[#2a323d] text-[#e9eef5] rounded-xl border border-[#2a323d] flex items-center gap-2 text-xs font-semibold">
             <ShoppingCart size={18} className="text-[#00d4b1]" />
             <span className="hidden sm:inline">Carrito</span>
-            {cart.length > 0 && <span className="bg-[#7c5cff] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{cart.reduce((a, b) => a + b.qty, 0)}</span>}
+            {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-[#7c5cff] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{cart.reduce((a, b) => a + b.qty, 0)}</span>}
           </button>
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 bg-[#1d242e] rounded-xl border border-[#2a323d]">
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
@@ -702,7 +716,7 @@ export default function App() {
         <button onClick={() => setActiveTab('marketplace')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'marketplace' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🛒 Marketplace</button>
         <button onClick={() => setActiveTab('chat')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>💬 Chat Global</button>
         <button onClick={() => setActiveTab('dm')} className={`relative px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'dm' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>
-          ✉️ Mensajería Pro
+          ✉️ Mensajería
           {unreadTotalCount > 0 && <span className="bg-[#ff5470] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-bounce">{unreadTotalCount}</span>}
         </button>
         <button onClick={() => setActiveTab('profile')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'profile' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>👤 Mi Perfil</button>
@@ -715,13 +729,7 @@ export default function App() {
         {activeTab === 'feed' && (
           <div className="space-y-4">
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
-              <textarea
-                value={newPostText}
-                onChange={(e) => setNewPostText(e.target.value)}
-                placeholder="¿Qué quieres compartir hoy con la comunidad?"
-                className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff] resize-none h-24"
-              />
-
+              <textarea value={newPostText} onChange={(e) => setNewPostText(e.target.value)} placeholder="¿Qué quieres compartir hoy con la comunidad?" className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff] resize-none h-24" />
               {postAttachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 p-2 bg-[#1d242e] rounded-xl border border-[#2a323d]">
                   {postAttachments.map(att => (
@@ -735,23 +743,14 @@ export default function App() {
                   ))}
                 </div>
               )}
-
               <div className="flex justify-between items-center">
                 <div className="flex gap-2 text-[#8b97a8]">
-                  <input type="file" multiple accept="image/*" ref={postFileInputRef} className="hidden" onChange={(e) => handlePostFileUpload(e, 'image')} />
-                  <button type="button" onClick={() => postFileInputRef.current.click()} className="p-2 hover:bg-[#1d242e] rounded-lg text-[#00d4b1] flex items-center gap-1 text-xs font-semibold">
-                    <ImageIcon size={18} /> <span className="hidden sm:inline">Foto</span>
-                  </button>
-
-                  <input type="file" multiple accept="video/*" ref={postVideoInputRef} className="hidden" onChange={(e) => handlePostFileUpload(e, 'video')} />
-                  <button type="button" onClick={() => postVideoInputRef.current.click()} className="p-2 hover:bg-[#1d242e] rounded-lg text-[#7c5cff] flex items-center gap-1 text-xs font-semibold">
-                    <Video size={18} /> <span className="hidden sm:inline">Video</span>
-                  </button>
+                  <input type="file" accept="image/*" ref={postFileInputRef} className="hidden" onChange={(e) => handlePostFileUpload(e, 'image')} />
+                  <button type="button" onClick={() => postFileInputRef.current.click()} className="p-2 hover:bg-[#1d242e] rounded-lg text-[#00d4b1] flex items-center gap-1 text-xs font-semibold"><ImageIcon size={18} /> <span className="hidden sm:inline">Foto</span></button>
+                  <input type="file" accept="video/*" ref={postVideoInputRef} className="hidden" onChange={(e) => handlePostFileUpload(e, 'video')} />
+                  <button type="button" onClick={() => postVideoInputRef.current.click()} className="p-2 hover:bg-[#1d242e] rounded-lg text-[#7c5cff] flex items-center gap-1 text-xs font-semibold"><Video size={18} /> <span className="hidden sm:inline">Video</span></button>
                 </div>
-                
-                <button type="button" onClick={handleCreatePost} className="px-5 py-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white text-sm font-semibold rounded-xl transition-all shadow-md active:scale-95 cursor-pointer">
-                  Publicar
-                </button>
+                <button type="button" onClick={handleCreatePost} className="px-5 py-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white text-sm font-semibold rounded-xl transition-all shadow-md active:scale-95 cursor-pointer">Publicar</button>
               </div>
             </div>
 
@@ -761,17 +760,24 @@ export default function App() {
                 <div key={p.id} className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white" style={{ backgroundColor: p.author_color }}>
-                        {p.author_name[0]}
-                      </div>
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white" style={{ backgroundColor: p.author_color }}>{p.author_name[0]}</div>
                       <div>
                         <div className="font-semibold text-sm flex items-center gap-1">@{p.author_name}</div>
                         <div className="text-xs text-[#8b97a8]">{p.created_at}</div>
                       </div>
                     </div>
-                    <button onClick={() => handleVotePost(p.id)} disabled={hasVoted} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${hasVoted ? 'bg-[#7c5cff]/20 border-[#7c5cff] text-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] text-[#8b97a8] hover:text-white hover:border-[#7c5cff]'}`}>
-                      <ThumbsUp size={14} className={hasVoted ? 'fill-[#7c5cff]' : ''} /> <span>{p.votes || 0}</span>
-                    </button>
+                    <div className="flex gap-2">
+                       {/* Botón para dar 5 puntos explícitos */}
+                       {p.author_id !== currentUser.id && (
+                          <button onClick={() => handleDonatePoints(p.id, p.author_id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#ffb020]/40 text-xs font-bold transition-all bg-[#ffb020]/10 text-[#ffb020] hover:bg-[#ffb020]/30">
+                            <Gift size={14} /> Dar 5 Pts
+                          </button>
+                       )}
+                       {/* Botón estándar de Like */}
+                       <button onClick={() => handleVotePost(p.id)} disabled={hasVoted || p.author_id === currentUser.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${hasVoted ? 'bg-[#7c5cff]/20 border-[#7c5cff] text-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] text-[#8b97a8] hover:text-white hover:border-[#7c5cff]'} disabled:opacity-50`}>
+                         <ThumbsUp size={14} className={hasVoted ? 'fill-[#7c5cff]' : ''} /> <span>{p.votes || 0}</span>
+                       </button>
+                    </div>
                   </div>
                   <p className="text-sm leading-relaxed">{p.text}</p>
                   {p.attachments && p.attachments.length > 0 && (
@@ -790,8 +796,6 @@ export default function App() {
           </div>
         )}
 
-        {/* OTROS TABS (MARKETPLACE, CHAT, DM, PROFILE)... */}
-        {/* Marketplace */}
         {activeTab === 'marketplace' && (
            <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4">
@@ -802,31 +806,27 @@ export default function App() {
                 <Plus size={18} /> Publicar Producto
               </button>
             </div>
-            {/* Omito listados extensos aquí, pero mantengo lo base */}
+            
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {filteredProducts.map(prod => (
-                <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl p-4 flex flex-col space-y-3">
+                <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl p-4 flex flex-col space-y-3 hover:border-[#7c5cff]/50 transition-all">
                   <img src={prod.image} className="w-full h-40 object-cover rounded-xl" />
                   <div className="flex-1">
                     <span className="text-[10px] bg-[#7c5cff]/20 text-[#7c5cff] font-bold px-2 py-0.5 rounded-full uppercase">{prod.category}</span>
                     <h3 className="font-bold text-white mt-2">{prod.title}</h3>
+                    <p className="text-xs text-[#8b97a8] mt-1 line-clamp-2">{prod.description}</p>
                   </div>
                   <div className="flex justify-between items-center border-t border-[#2a323d] pt-3">
                     <span className="text-xl font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</span>
-                    <button onClick={() => setCart([...cart, { ...prod, qty: 1 }])} className="px-3.5 py-1.5 bg-[#7c5cff] text-white text-xs font-bold rounded-xl flex items-center gap-1"><ShoppingCart size={14}/> Comprar</button>
+                    <button onClick={() => addToCart(prod)} className="px-3.5 py-1.5 bg-[#7c5cff] hover:bg-[#6b47ff] text-white text-xs font-bold rounded-xl flex items-center gap-1 transition-colors"><ShoppingCart size={14}/> Comprar</button>
                   </div>
                 </div>
               ))}
+              {filteredProducts.length === 0 && (
+                <div className="col-span-1 sm:col-span-2 text-center text-[#8b97a8] p-8 bg-[#161b23] border border-[#2a323d] rounded-xl">No hay productos en esta categoría.</div>
+              )}
             </div>
            </div>
-        )}
-
-        {/* TABS DE REDUCIDO TAMAÑO VISUAL EN CODIGO */}
-        {activeTab === 'profile' && (
-          <div className="bg-[#161b23] p-6 rounded-2xl border border-[#2a323d] space-y-4">
-             <h2 className="text-xl font-bold">Tu Perfil</h2>
-             <p className="text-sm text-[#8b97a8]">Panel simplificado (resto mantenido en versión real).</p>
-          </div>
         )}
 
         {activeTab === 'chat' && (
@@ -834,25 +834,125 @@ export default function App() {
             <div className="flex-1 p-4 overflow-y-auto space-y-3">
               {chatMessages.map(m => (
                 <div key={m.id} className={`flex flex-col ${m.user_id === currentUser.id ? 'items-end' : 'items-start'}`}>
+                  <span className="text-[10px] text-[#8b97a8] mb-1 px-1">@{m.user_name}</span>
                   <div className={`p-3 rounded-2xl max-w-xs text-sm ${m.user_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>{m.text}</div>
                 </div>
               ))}
               <div ref={chatEndRef} />
             </div>
             <form onSubmit={handleSendGlobalChat} className="p-3 border-t border-[#2a323d] flex gap-2">
-              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff] text-white" />
-              <button type="submit" className="p-2 bg-[#7c5cff] text-white rounded-xl"><Send size={18}/></button>
+              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff] text-white" placeholder="Escribe un mensaje..." />
+              <button type="submit" className="p-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white rounded-xl"><Send size={18}/></button>
             </form>
           </div>
         )}
 
+        {/* MÓDULO DE MENSAJERÍA RESTAURADO POR COMPLETO */}
         {activeTab === 'dm' && (
-           <div className="bg-[#161b23] p-6 rounded-2xl border border-[#2a323d] text-center text-[#8b97a8]">
-              <p>Módulo de DMs Activo</p>
+           <div className="bg-[#161b23] border border-[#2a323d] rounded-xl flex h-[600px] overflow-hidden">
+              {/* Sidebar de Usuarios */}
+              <div className="w-1/3 border-r border-[#2a323d] flex flex-col bg-[#11151c]">
+                 <div className="p-3 border-b border-[#2a323d]">
+                    <div className="relative">
+                      <input type="text" placeholder="Buscar usuario..." value={dmSearchQuery} onChange={e=>setDmSearchQuery(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#7c5cff] text-white" />
+                      <Search size={14} className="absolute left-2.5 top-2.5 text-[#8b97a8]" />
+                    </div>
+                 </div>
+                 <div className="flex-1 overflow-y-auto">
+                    {filteredUsersForDm.map(u => {
+                       const unread = directMessages.filter(m => m.sender_id === u.id && m.receiver_id === currentUser.id && !m.read).length;
+                       return (
+                         <button key={u.id} onClick={() => {
+                            setActiveDmUser(u);
+                            // Marcar leídos
+                            const updatedDms = directMessages.map(m => (m.sender_id === u.id && m.receiver_id === currentUser.id) ? { ...m, read: true } : m);
+                            updateDms(updatedDms);
+                         }} className={`w-full text-left p-3 flex items-center gap-3 border-b border-[#2a323d]/50 transition-colors ${activeDmUser?.id === u.id ? 'bg-[#1d242e] border-l-2 border-l-[#7c5cff]' : 'hover:bg-[#1d242e]'}`}>
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white relative shrink-0" style={{ backgroundColor: u.avatar_color }}>
+                              {u.username[0]}
+                              {u.isOnline && <span className="absolute bottom-0 right-0 w-2 h-2 bg-[#10b981] rounded-full border border-[#11151c]" />}
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                               <div className="font-bold text-xs text-white truncate">@{u.username}</div>
+                               <div className="text-[10px] text-[#8b97a8] truncate">{u.headline || 'Miembro'}</div>
+                            </div>
+                            {unread > 0 && <span className="bg-[#ff5470] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0">{unread}</span>}
+                         </button>
+                       );
+                    })}
+                    {filteredUsersForDm.length === 0 && <div className="p-4 text-center text-xs text-[#8b97a8]">No se encontraron usuarios.</div>}
+                 </div>
+              </div>
+
+              {/* Área de Chat Privado */}
+              <div className="flex-1 flex flex-col bg-[#161b23]">
+                 {activeDmUser ? (
+                    <>
+                       <div className="p-3 border-b border-[#2a323d] flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white" style={{ backgroundColor: activeDmUser.avatar_color }}>{activeDmUser.username[0]}</div>
+                          <div>
+                            <div className="font-bold text-sm text-white">Chat con @{activeDmUser.username}</div>
+                            <div className="text-[10px] text-[#8b97a8]">{activeDmUser.isOnline ? 'En línea' : 'Desconectado'}</div>
+                          </div>
+                       </div>
+                       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                          {directMessages.filter(m => (m.sender_id === currentUser.id && m.receiver_id === activeDmUser.id) || (m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id)).map(m => (
+                             <div key={m.id} className={`flex flex-col ${m.sender_id === currentUser.id ? 'items-end' : 'items-start'}`}>
+                               <div className={`p-2.5 rounded-xl max-w-xs text-sm ${m.sender_id === currentUser.id ? 'bg-[#7c5cff] text-white rounded-br-none' : 'bg-[#1d242e] text-[#e9eef5] rounded-bl-none'}`}>{m.text}</div>
+                               <span className="text-[9px] text-[#8b97a8] mt-1 mx-1">{m.created_at}</span>
+                             </div>
+                          ))}
+                          <div ref={dmEndRef} />
+                       </div>
+                       <form onSubmit={handleSendDm} className="p-3 border-t border-[#2a323d] flex gap-2">
+                          <input type="text" value={dmInput} onChange={e=>setDmInput(e.target.value)} placeholder="Escribe un mensaje privado..." className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff] text-white" />
+                          <button type="submit" className="p-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white rounded-xl"><Send size={18}/></button>
+                       </form>
+                    </>
+                 ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-[#8b97a8]">
+                       <MessageCircle size={48} className="mb-4 opacity-50" />
+                       <p>Selecciona un usuario a la izquierda para iniciar un chat.</p>
+                    </div>
+                 )}
+              </div>
            </div>
         )}
 
-        {/* PANEL MAESTRO EXTENDIDO (NUEVAS FUNCIONES) */}
+        {/* PERFIL RESTAURADO POR COMPLETO */}
+        {activeTab === 'profile' && (
+          <div className="bg-[#161b23] p-6 rounded-2xl border border-[#2a323d]">
+             <h2 className="text-2xl font-bold text-white mb-6 border-b border-[#2a323d] pb-3">Mi Perfil</h2>
+             <form onSubmit={handleSaveProfile} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div>
+                     <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Nombre Completo</label>
+                     <input type="text" value={profileFullName} onChange={e=>setProfileFullName(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-sm focus:outline-none focus:border-[#7c5cff] text-white" />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Titular (Headline)</label>
+                     <input type="text" value={profileHeadline} onChange={e=>setProfileHeadline(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-sm focus:outline-none focus:border-[#7c5cff] text-white" />
+                   </div>
+                   <div className="md:col-span-2">
+                     <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Biografía</label>
+                     <textarea value={profileBio} onChange={e=>setProfileBio(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-sm focus:outline-none focus:border-[#7c5cff] text-white h-20 resize-none" />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Ubicación</label>
+                     <input type="text" value={profileLocation} onChange={e=>setProfileLocation(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-sm focus:outline-none focus:border-[#7c5cff] text-white" />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Sitio Web</label>
+                     <input type="text" value={profileWebsite} onChange={e=>setProfileWebsite(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-sm focus:outline-none focus:border-[#7c5cff] text-white" />
+                   </div>
+                </div>
+                <div className="flex justify-end pt-4 border-t border-[#2a323d]">
+                   <button type="submit" className="px-5 py-2.5 bg-[#7c5cff] hover:bg-[#6b47ff] text-white font-bold rounded-xl transition-all">Guardar Cambios</button>
+                </div>
+             </form>
+          </div>
+        )}
+
         {activeTab === 'master_panel' && currentUser.role === 'admin' && (
           <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#ffb020]/40 p-6 rounded-2xl">
@@ -898,7 +998,6 @@ export default function App() {
                     </div>
 
                     <div className="flex flex-wrap gap-2 text-xs">
-                      {/* Bóton Nuevo para ver/editar detalles y posts */}
                       <button onClick={() => openAdminDetailModal(u)} className="px-3 py-1.5 bg-[#7c5cff]/20 text-[#7c5cff] border border-[#7c5cff]/40 rounded-lg font-bold hover:bg-[#7c5cff]/30">
                         <Edit3 size={14} className="inline mr-1"/> Detalles / Posts
                       </button>
@@ -937,7 +1036,6 @@ export default function App() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#ffb020]/50 text-[#e9eef5] rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
             <button type="button" onClick={() => setAdminModalUser(null)} className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"><X size={20} /></button>
-
             <div className="flex items-center gap-3 border-b border-[#2a323d] pb-4 mb-4">
               <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg text-white" style={{ backgroundColor: adminModalUser.avatar_color }}>
                 {adminModalUser.username[0]}
@@ -951,7 +1049,6 @@ export default function App() {
             <div className="flex-1 overflow-y-auto space-y-6 pr-2">
               <form onSubmit={handleSaveAdminDetail} className="space-y-4 bg-[#1d242e] border border-[#2a323d] p-4 rounded-xl">
                 <h4 className="font-bold text-sm text-[#00d4b1] mb-2 flex items-center gap-1"><ShieldAlert size={16}/> Credenciales y Puntos</h4>
-                
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Correo Electrónico</label>
@@ -966,20 +1063,13 @@ export default function App() {
                     <input type="number" value={adminEditPoints} onChange={(e) => setAdminEditPoints(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-2.5 text-xs focus:outline-none focus:border-[#ffb020] text-white" />
                   </div>
                 </div>
-                
                 <div className="flex justify-end">
-                  <button type="submit" className="px-5 py-2 bg-[#ffb020] text-slate-950 font-extrabold text-xs rounded-xl shadow-md hover:bg-[#e09b19]">
-                    Guardar Cambios de Cuenta
-                  </button>
+                  <button type="submit" className="px-5 py-2 bg-[#ffb020] text-slate-950 font-extrabold text-xs rounded-xl shadow-md hover:bg-[#e09b19]">Guardar Cambios</button>
                 </div>
               </form>
 
               <div className="space-y-3">
-                <h4 className="font-bold text-sm text-white flex items-center gap-2">
-                  <MessageSquare size={16} className="text-[#7c5cff]" /> 
-                  Publicaciones de este usuario en el Feed
-                </h4>
-                
+                <h4 className="font-bold text-sm text-white flex items-center gap-2"><MessageSquare size={16} className="text-[#7c5cff]" /> Publicaciones de este usuario</h4>
                 {posts.filter(p => p.author_id === adminModalUser.id).length === 0 ? (
                   <p className="text-xs text-[#8b97a8] bg-[#1d242e] p-4 rounded-xl text-center border border-[#2a323d]">El usuario no tiene publicaciones.</p>
                 ) : (
@@ -988,15 +1078,9 @@ export default function App() {
                       <div key={p.id} className="bg-[#1d242e] border border-[#2a323d] p-3 rounded-xl flex flex-col gap-2">
                         <div className="flex justify-between items-start">
                           <span className="text-[10px] text-[#8b97a8]">{p.created_at}</span>
-                          <button onClick={() => handleAdminDeletePost(p.id)} className="text-[#ff5470] hover:bg-[#ff5470]/20 p-1 rounded-lg flex items-center gap-1 text-[10px] font-bold">
-                            <Trash2 size={12}/> Eliminar Post
-                          </button>
+                          <button onClick={() => handleAdminDeletePost(p.id)} className="text-[#ff5470] hover:bg-[#ff5470]/20 p-1 rounded-lg flex items-center gap-1 text-[10px] font-bold"><Trash2 size={12}/> Eliminar</button>
                         </div>
                         <p className="text-xs text-white line-clamp-3">{p.text}</p>
-                        {p.attachments && p.attachments.length > 0 && (
-                          <div className="text-[10px] text-[#00d4b1] font-semibold flex items-center gap-1"><ImageIcon size={12}/> Contiene {p.attachments.length} archivo(s) adjunto(s).</div>
-                        )}
-                        <div className="text-[10px] font-bold text-[#ffb020]">Puntos de post: {p.votes || 0}</div>
                       </div>
                     ))}
                   </div>
@@ -1007,10 +1091,86 @@ export default function App() {
         </div>
       )}
 
-      {/* OTROS MODALES (Carrito, Vender) */}
+      {/* MODAL CARRITO RESTAURADO */}
+      {showCartModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+           <div className="bg-[#161b23] border border-[#2a323d] w-full max-w-md rounded-2xl p-6 relative shadow-2xl">
+              <button onClick={()=>setShowCartModal(false)} className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"><X size={20}/></button>
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><ShoppingCart className="text-[#00d4b1]"/> Carrito de Compras</h3>
+              <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2">
+                 {cart.map(item => (
+                    <div key={item.id} className="flex justify-between items-center bg-[#1d242e] border border-[#2a323d] p-3 rounded-xl">
+                       <div className="flex flex-col">
+                         <span className="text-sm font-bold text-white">{item.title}</span>
+                         <span className="text-xs text-[#00d4b1]">${item.price.toFixed(2)} x {item.qty}</span>
+                       </div>
+                       <button onClick={()=>updateCart(cart.filter(c => c.id !== item.id))} className="text-[#ff5470] p-1.5 hover:bg-[#ff5470]/20 rounded-lg"><Trash2 size={16}/></button>
+                    </div>
+                 ))}
+                 {cart.length === 0 && <p className="text-sm text-[#8b97a8] text-center p-4 bg-[#1d242e] rounded-xl border border-[#2a323d]">Tu carrito está vacío.</p>}
+              </div>
+              <div className="border-t border-[#2a323d] pt-4 flex justify-between items-center mb-4">
+                 <span className="font-bold text-white">Total a Pagar:</span>
+                 <span className="text-2xl font-bold text-[#00d4b1]">${cart.reduce((sum, item) => sum + item.price * item.qty, 0).toFixed(2)}</span>
+              </div>
+              <button onClick={()=> { alert('Simulación de Pago Exitosa.'); updateCart([]); setShowCartModal(false); }} className="w-full bg-gradient-to-r from-[#00d4b1] to-[#10b981] py-3 rounded-xl text-slate-950 font-bold shadow-lg hover:brightness-110 disabled:opacity-50" disabled={cart.length === 0}>
+                Proceder al Pago Seguro
+              </button>
+           </div>
+        </div>
+      )}
+
+      {/* MODAL VENDER RESTAURADO */}
       {showSellModal && (
-         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-           {/* ... Contenido del modal mantenido en código real ... */}
+         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[#161b23] border border-[#2a323d] w-full max-w-lg rounded-2xl p-6 relative my-8 shadow-2xl">
+              <button onClick={() => setShowSellModal(false)} className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"><X size={20} /></button>
+              <h2 className="text-xl font-bold text-white mb-6 border-b border-[#2a323d] pb-3">Publicar Nuevo Producto</h2>
+              <form onSubmit={executePublishProduct} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Título del Producto/Servicio *</label>
+                  <input type="text" required value={newProdTitle} onChange={(e) => setNewProdTitle(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#00d4b1] text-white" placeholder="Ej: Script automatizador web" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Categoría *</label>
+                    <select value={newProdCategory} onChange={(e) => setNewProdCategory(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#00d4b1] text-white">
+                      {MARKETPLACE_CATEGORIES.filter(c => c !== 'Todos').map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Precio (USD) *</label>
+                    <input type="number" step="0.01" required value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#00d4b1] text-white" placeholder="0.00" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Descripción *</label>
+                  <textarea required value={newProdDescription} onChange={(e) => setNewProdDescription(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#00d4b1] text-white h-24 resize-none" placeholder="Detalles de lo que ofreces..."></textarea>
+                </div>
+                
+                <div className="border border-[#2a323d] rounded-xl p-3 bg-[#1d242e]">
+                  <label className="block text-xs font-semibold text-[#8b97a8] mb-2">Imagen del Producto</label>
+                  <div className="flex gap-2 mb-3">
+                    <button type="button" onClick={() => setProdImageType('url')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${prodImageType === 'url' ? 'bg-[#00d4b1] text-slate-950' : 'bg-[#161b23] text-[#8b97a8]'}`}>Usar URL</button>
+                    <button type="button" onClick={() => setProdImageType('upload')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${prodImageType === 'upload' ? 'bg-[#00d4b1] text-slate-950' : 'bg-[#161b23] text-[#8b97a8]'}`}>Subir Archivo</button>
+                  </div>
+                  
+                  {prodImageType === 'url' ? (
+                     <input type="url" value={prodImageUrl} onChange={(e) => setProdImageUrl(e.target.value)} className="w-full bg-[#161b23] border border-[#2a323d] rounded-xl p-2 text-xs focus:outline-none text-white" placeholder="https://ejemplo.com/imagen.jpg" />
+                  ) : (
+                     <div className="flex items-center gap-2">
+                       <input type="file" accept="image/*" ref={prodFileInputRef} className="hidden" onChange={handleProductImageUpload} />
+                       <button type="button" onClick={() => prodFileInputRef.current.click()} className="px-4 py-2 bg-[#161b23] border border-[#2a323d] rounded-xl text-xs text-[#00d4b1] font-bold">Seleccionar Imagen Local</button>
+                       {prodImagePreview && <img src={prodImagePreview} className="w-10 h-10 object-cover rounded-lg" />}
+                     </div>
+                  )}
+                </div>
+
+                <button type="submit" className="w-full py-3 bg-gradient-to-r from-[#00d4b1] to-[#10b981] hover:brightness-110 text-slate-950 font-extrabold rounded-xl shadow-lg mt-4">
+                  Publicar en Marketplace
+                </button>
+              </form>
+            </div>
          </div>
       )}
 
