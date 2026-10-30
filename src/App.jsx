@@ -332,6 +332,66 @@ export default function App() {
     alert(`Agregado al carrito: ${prod.title}`);
   };
 
+  // NUEVA FUNCIONALIDAD: Al proceder el pago seguro, envía DM automático a cada vendedor de los productos en el carrito
+  const handleSecureCheckout = () => {
+    if (!currentUser || cart.length === 0) return;
+
+    const currentDms = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
+    let addedDms = [...currentDms];
+
+    // Agrupar productos por vendedor (seller_id)
+    const sellerMap = {};
+    cart.forEach(item => {
+      const sId = item.seller_id || 'ext3-id';
+      if (!sellerMap[sId]) {
+        sellerMap[sId] = [];
+      }
+      sellerMap[sId].push(item);
+    });
+
+    // Enviar un DM automático a cada vendedor con los detalles de la compra
+    Object.keys(sellerMap).forEach(sellerId => {
+      // No enviarse DM a uno mismo si uno es el vendedor
+      if (sellerId === currentUser.id) return;
+
+      const itemsListStr = sellerMap[sellerId].map(i => `• ${i.title} (Cant: ${i.qty}) - $${(i.price * i.qty).toFixed(2)}`).join('
+');
+      const totalSellerPrice = sellerMap[sellerId].reduce((sum, i) => sum + i.price * i.qty, 0).toFixed(2);
+
+      const dmMessageText = `¡Hola! 👋 Acabo de realizar el "Pago Seguro" en el Marketplace por tus productos:
+${itemsListStr}
+Total: $${totalSellerPrice} USD.
+
+Por favor, contáctame para coordinar los métodos de pago de manera directa contigo. ¡Quedo atento!`;
+
+      const newDm = {
+        id: 'dm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        sender_id: currentUser.id,
+        receiver_id: sellerId,
+        text: dmMessageText,
+        created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        read: false
+      };
+      addedDms.push(newDm);
+    });
+
+    updateDms(addedDms);
+    updateCart([]);
+    setShowCartModal(false);
+    
+    alert('¡Pedido de compra generado con éxito! Se ha enviado un mensaje directo a cada vendedor para coordinar el pago directo.');
+    
+    // Cambiar automáticamente a la pestaña de DMs si se compró a otro usuario
+    const firstOtherSeller = Object.keys(sellerMap).find(sId => sId !== currentUser.id);
+    if (firstOtherSeller) {
+      const targetUser = users.find(u => u.id === firstOtherSeller);
+      if (targetUser) {
+        setActiveDmUser(targetUser);
+        setActiveTab('dm');
+      }
+    }
+  };
+
   const unreadTotalCount = currentUser ? directMessages.filter(m => m.receiver_id === currentUser.id && !m.read).length : 0;
   const onlineUsersCount = users.filter(u => u.isOnline).length;
 
@@ -371,7 +431,7 @@ export default function App() {
     if (!currentUser) return;
     const targetPost = posts.find(p => p.id === postId);
     if (!targetPost) return;
-    if (targetPost.author_id === currentUser.id) return alert("No puedes darle like a tu propio post.");
+    if (targetPost.author_id === currentUser.id) return alert("Sí señor, no puedes darle like a tu propio post.");
 
     const currentPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
     const updated = currentPosts.map(p => {
@@ -396,10 +456,10 @@ export default function App() {
 
   const handleDonatePoints = (postId, authorId) => {
     if (!currentUser) return;
-    if (currentUser.id === authorId) return alert("No puedes donarte puntos a ti mismo.");
-    if ((currentUser.points || 0) < 5) return alert("No tienes suficientes puntos. Necesitas al menos 5 pts para donar.");
+    if (currentUser.id === authorId) return alert("Sí señor, no puedes donarte puntos a ti mismo.");
+    if ((currentUser.points || 0) < 5) return alert("Sí señor, no tienes suficientes puntos. Necesitas al menos 5 pts para donar.");
     
-    if (!window.confirm("¿Deseas donar 5 puntos de tu saldo a este usuario para premiar su publicación?")) return;
+    if (!window.confirm("¿Sí señor, deseas donar 5 puntos de tu saldo a este usuario para premiar su publicación?")) return;
 
     const currentUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
     const updatedUsers = currentUsers.map(u => {
@@ -410,7 +470,7 @@ export default function App() {
     
     updateUsersList(updatedUsers);
     setCurrentUser(updatedUsers.find(u => u.id === currentUser.id));
-    alert("¡Has donado 5 puntos exitosamente!");
+    alert("Sí señor, ¡has donado 5 puntos exitosamente!");
   };
 
   const handleSaveProfile = (e) => {
@@ -426,7 +486,7 @@ export default function App() {
     updateUsersList(updatedList);
     setCurrentUser(updatedUser);
     setIsEditingProfile(false);
-    alert('Perfil actualizado con éxito.');
+    alert('Sí señor, perfil actualizado con éxito.');
   };
 
   const handleAdminUserAction = (userId, newStatus, newRole) => {
@@ -468,18 +528,13 @@ export default function App() {
     });
     updateUsersList(updatedList);
     setAdminModalUser(null);
-    alert('Credenciales y puntos del usuario actualizados exitosamente.');
+    alert('Sí señor, credenciales y puntos del usuario actualizados exitosamente.');
   };
 
   const handleAdminDeletePost = (postId) => {
-    if (!window.confirm("¿Seguro que deseas eliminar esta publicación del usuario?")) return;
+    if (!window.confirm("¿Sí señor, deseas eliminar esta publicación del usuario?")) return;
     const currentPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
     updatePostsList(currentPosts.filter(p => p.id !== postId));
-  };
-
-  const handleDeleteProduct = (prodId) => {
-    const currentProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
-    updateProductsList(currentProds.filter(p => p.id !== prodId));
   };
 
   const compressImage = (file, callback) => {
@@ -520,7 +575,7 @@ export default function App() {
   const executePublishProduct = (e) => {
     if (e) e.preventDefault();
     if (!newProdTitle.trim() || !newProdPrice || !newProdDescription.trim()) {
-      alert('Por favor completa todos los campos requeridos: Título, Precio y Descripción.');
+      alert('Sí señor, por favor completa todos los campos requeridos: Título, Precio y Descripción.');
       return;
     }
     const finalImage = prodImageType === 'url' 
@@ -543,7 +598,7 @@ export default function App() {
   const handleCreatePost = (e) => {
     if (e) e.preventDefault();
     if (!newPostText.trim() && postAttachments.length === 0) {
-      alert('Escribe un texto o adjunta una imagen/archivo para publicar.');
+      alert('Sí señor, escribe un texto o adjunta una imagen/archivo para publicar.');
       return;
     }
     const newPost = {
@@ -565,7 +620,7 @@ export default function App() {
           try {
             setPostAttachments(prev => [...prev, { id: 'att_' + Date.now() + Math.random(), name: file.name, type: 'image', url: dataUrl }]);
           } catch (err) {
-            alert('Error: La imagen es demasiado pesada incluso tras compresión. Intenta con otra.');
+            alert('Sí señor, la imagen es demasiado pesada incluso tras compresión.');
           }
         });
       } else {
@@ -574,7 +629,7 @@ export default function App() {
           try {
             setPostAttachments(prev => [...prev, { id: 'att_' + Date.now() + Math.random(), name: file.name, type: fileType || 'file', url: reader.result }]);
           } catch(err) {
-             alert('Error: Archivo muy pesado para el almacenamiento local temporal.');
+             alert('Sí señor, archivo muy pesado para el almacenamiento local.');
           }
         };
         reader.readAsDataURL(file);
@@ -655,7 +710,7 @@ export default function App() {
       <div className="min-h-screen bg-[#0e1116] text-[#e9eef5] flex items-center justify-center p-4">
         <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-[#161b23] border border-[#2a323d] p-8 rounded-2xl shadow-2xl">
           <div className="flex flex-col justify-center space-y-4">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">◈ Elraizer Community</h1>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">Sí señor - Elraizer Community</h1>
             <p className="text-[#8b97a8]">Comunidad, Marketplace, Mensajería Directa y Panel Maestro.</p>
           </div>
           <div className="bg-[#1d242e] p-6 rounded-xl border border-[#2a323d] space-y-4">
@@ -680,7 +735,7 @@ export default function App() {
       <header className="sticky top-0 z-40 bg-[#161b23]/90 backdrop-blur-md border-b border-[#2a323d] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="font-bold text-lg bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent flex items-center gap-2">
-            ◈ Elraizer Community
+            Sí señor - Elraizer Community
           </div>
           <div className="hidden sm:flex items-center gap-1.5 bg-[#10b981]/10 border border-[#10b981]/30 px-3 py-1 rounded-full text-xs text-[#10b981] font-semibold">
             <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse" />
@@ -767,13 +822,11 @@ export default function App() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                       {/* Botón para dar 5 puntos explícitos */}
                        {p.author_id !== currentUser.id && (
                           <button onClick={() => handleDonatePoints(p.id, p.author_id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#ffb020]/40 text-xs font-bold transition-all bg-[#ffb020]/10 text-[#ffb020] hover:bg-[#ffb020]/30">
                             <Gift size={14} /> Dar 5 Pts
                           </button>
                        )}
-                       {/* Botón estándar de Like */}
                        <button onClick={() => handleVotePost(p.id)} disabled={hasVoted || p.author_id === currentUser.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${hasVoted ? 'bg-[#7c5cff]/20 border-[#7c5cff] text-[#7c5cff]' : 'bg-[#1d242e] border-[#2a323d] text-[#8b97a8] hover:text-white hover:border-[#7c5cff]'} disabled:opacity-50`}>
                          <ThumbsUp size={14} className={hasVoted ? 'fill-[#7c5cff]' : ''} /> <span>{p.votes || 0}</span>
                        </button>
@@ -815,6 +868,7 @@ export default function App() {
                     <span className="text-[10px] bg-[#7c5cff]/20 text-[#7c5cff] font-bold px-2 py-0.5 rounded-full uppercase">{prod.category}</span>
                     <h3 className="font-bold text-white mt-2">{prod.title}</h3>
                     <p className="text-xs text-[#8b97a8] mt-1 line-clamp-2">{prod.description}</p>
+                    <div className="text-[10px] text-[#00d4b1] mt-2">Vendedor: @{prod.seller_name}</div>
                   </div>
                   <div className="flex justify-between items-center border-t border-[#2a323d] pt-3">
                     <span className="text-xl font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</span>
@@ -847,10 +901,8 @@ export default function App() {
           </div>
         )}
 
-        {/* MÓDULO DE MENSAJERÍA RESTAURADO POR COMPLETO */}
         {activeTab === 'dm' && (
            <div className="bg-[#161b23] border border-[#2a323d] rounded-xl flex h-[600px] overflow-hidden">
-              {/* Sidebar de Usuarios */}
               <div className="w-1/3 border-r border-[#2a323d] flex flex-col bg-[#11151c]">
                  <div className="p-3 border-b border-[#2a323d]">
                     <div className="relative">
@@ -864,7 +916,6 @@ export default function App() {
                        return (
                          <button key={u.id} onClick={() => {
                             setActiveDmUser(u);
-                            // Marcar leídos
                             const updatedDms = directMessages.map(m => (m.sender_id === u.id && m.receiver_id === currentUser.id) ? { ...m, read: true } : m);
                             updateDms(updatedDms);
                          }} className={`w-full text-left p-3 flex items-center gap-3 border-b border-[#2a323d]/50 transition-colors ${activeDmUser?.id === u.id ? 'bg-[#1d242e] border-l-2 border-l-[#7c5cff]' : 'hover:bg-[#1d242e]'}`}>
@@ -884,7 +935,6 @@ export default function App() {
                  </div>
               </div>
 
-              {/* Área de Chat Privado */}
               <div className="flex-1 flex flex-col bg-[#161b23]">
                  {activeDmUser ? (
                     <>
@@ -919,7 +969,6 @@ export default function App() {
            </div>
         )}
 
-        {/* PERFIL RESTAURADO POR COMPLETO */}
         {activeTab === 'profile' && (
           <div className="bg-[#161b23] p-6 rounded-2xl border border-[#2a323d]">
              <h2 className="text-2xl font-bold text-white mb-6 border-b border-[#2a323d] pb-3">Mi Perfil</h2>
@@ -1031,7 +1080,6 @@ export default function App() {
         )}
       </main>
 
-      {/* MODAL DETALLES DEL USUARIO (ADMINISTRADOR) */}
       {adminModalUser && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#ffb020]/50 text-[#e9eef5] rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
@@ -1091,7 +1139,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL CARRITO RESTAURADO */}
       {showCartModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
            <div className="bg-[#161b23] border border-[#2a323d] w-full max-w-md rounded-2xl p-6 relative shadow-2xl">
@@ -1113,14 +1160,13 @@ export default function App() {
                  <span className="font-bold text-white">Total a Pagar:</span>
                  <span className="text-2xl font-bold text-[#00d4b1]">${cart.reduce((sum, item) => sum + item.price * item.qty, 0).toFixed(2)}</span>
               </div>
-              <button onClick={()=> { alert('Simulación de Pago Exitosa.'); updateCart([]); setShowCartModal(false); }} className="w-full bg-gradient-to-r from-[#00d4b1] to-[#10b981] py-3 rounded-xl text-slate-950 font-bold shadow-lg hover:brightness-110 disabled:opacity-50" disabled={cart.length === 0}>
-                Proceder al Pago Seguro
+              <button onClick={handleSecureCheckout} className="w-full bg-gradient-to-r from-[#00d4b1] to-[#10b981] py-3 rounded-xl text-slate-950 font-bold shadow-lg hover:brightness-110 disabled:opacity-50" disabled={cart.length === 0}>
+                Proceder al Pago Seguro (Contactar Vendedor)
               </button>
            </div>
         </div>
       )}
 
-      {/* MODAL VENDER RESTAURADO */}
       {showSellModal && (
          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
             <div className="bg-[#161b23] border border-[#2a323d] w-full max-w-lg rounded-2xl p-6 relative my-8 shadow-2xl">
@@ -1139,7 +1185,7 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Precio (USD) *</label>
+                    <label className="package-price block text-xs font-semibold text-[#8b97a8] mb-1">Precio (USD) *</label>
                     <input type="number" step="0.01" required value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#00d4b1] text-white" placeholder="0.00" />
                   </div>
                 </div>
@@ -1162,7 +1208,7 @@ export default function App() {
                        <input type="file" accept="image/*" ref={prodFileInputRef} className="hidden" onChange={handleProductImageUpload} />
                        <button type="button" onClick={() => prodFileInputRef.current.click()} className="px-4 py-2 bg-[#161b23] border border-[#2a323d] rounded-xl text-xs text-[#00d4b1] font-bold">Seleccionar Imagen Local</button>
                        {prodImagePreview && <img src={prodImagePreview} className="w-10 h-10 object-cover rounded-lg" />}
-                     </div>
+                    </div>
                   )}
                 </div>
 
