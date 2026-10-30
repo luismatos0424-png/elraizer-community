@@ -244,7 +244,6 @@ export default function App() {
   // Navigation & Marketplace Filters
   const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
-  const [dmFolder, setDmFolder] = useState('all');
   const [dmSearchQuery, setDmSearchQuery] = useState('');
 
   const [selectedCategory, setSelectedCategory] = useState('Todos');
@@ -253,16 +252,6 @@ export default function App() {
   // Modals & State
   const [showCartModal, setShowCartModal] = useState(false);
   const [showSellModal, setShowSellModal] = useState(false);
-  const [showAdminModal, setShowAdminModal] = useState(false);
-  const [selectedAdminUser, setSelectedAdminUser] = useState(null);
-  const [newAdminPassword, setNewAdminPassword] = useState('');
-  const [adminPasswordSuccess, setAdminPasswordSuccess] = useState('');
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-
-  // Modal para Otorgar Puntos
-  const [pointsModalPost, setPointsModalPost] = useState(null);
-  const [pointsToGiveInput, setPointsToGiveInput] = useState('');
-  const [pointsError, setPointsError] = useState('');
 
   // Formulario Publicar Producto Marketplace
   const [newProdTitle, setNewProdTitle] = useState('');
@@ -279,7 +268,6 @@ export default function App() {
   const postFileInputRef = useRef(null);
   const postVideoInputRef = useRef(null);
   const postGeneralFileInputRef = useRef(null);
-  const prodFileInputRef = useRef(null);
 
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
@@ -368,7 +356,7 @@ export default function App() {
     };
   }, []);
 
-  // Persistence Effects
+  // Sync LocalStorage
   useEffect(() => { localStorage.setItem('elraizer_users', JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem('elraizer_posts', JSON.stringify(posts)); }, [posts]);
   useEffect(() => { localStorage.setItem('elraizer_products', JSON.stringify(products)); }, [products]);
@@ -377,7 +365,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem('elraizer_dms', JSON.stringify(directMessages)); }, [directMessages]);
   useEffect(() => { localStorage.setItem('elraizer_pinned_dms', JSON.stringify(pinnedUserIds)); }, [pinnedUserIds]);
 
-  // Read status update
+  // Status de lectura DMs
   useEffect(() => {
     if (currentUser && activeDmUser && activeTab === 'dm') {
       const hasUnread = directMessages.some(m => m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id && !m.read);
@@ -397,26 +385,8 @@ export default function App() {
     }
   }, [activeDmUser, currentUser, activeTab, directMessages]);
 
-  const onlineUsers = users.filter(u => u.isOnline);
   const unreadTotalCount = currentUser ? directMessages.filter(m => m.receiver_id === currentUser.id && !m.read).length : 0;
 
-  const userRoleKey = currentUser?.chat_role || 'miembro';
-  const maxDailyPoints = RANK_POINTS_LIMITS[userRoleKey] || 50;
-  const currentGiven = currentUser?.dailyPointsGiven || 0;
-  const remainingDailyPoints = Math.max(0, maxDailyPoints - currentGiven);
-
-  const handleProductFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProdImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // FUNCIONES DE ACCIÓN ESTABLES Y RESILIENTES
   const executePublishProduct = (e) => {
     if (e) e.preventDefault();
     if (!newProdTitle.trim() || !newProdPrice || !newProdDescription.trim()) {
@@ -636,15 +606,6 @@ export default function App() {
     localStorage.setItem('elraizer_users', JSON.stringify(updatedUsers));
   };
 
-  const getDaysRemaining = (expiresAt) => {
-    if (!expiresAt) return 30;
-    const now = new Date();
-    const exp = new Date(expiresAt);
-    const diffTime = exp - now;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays > 0 ? diffDays : 0;
-  };
-
   const togglePinConversation = (targetUserId, e) => {
     e.stopPropagation();
     if (pinnedUserIds.includes(targetUserId)) {
@@ -700,6 +661,13 @@ export default function App() {
           <div className="flex flex-col justify-center space-y-4">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">◈ Elraizer Community</h1>
             <p className="text-[#8b97a8]">Comunidad, Marketplace, Mensajería Directa y Panel Maestro.</p>
+            <div className="flex flex-col gap-2 pt-2">
+              <span className="text-xs text-[#8b97a8]">Cuentas de prueba rápida:</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { setCurrentUser(INITIAL_USERS[0]); setUsers(INITIAL_USERS); }} className="px-3 py-1.5 bg-[#ffb020]/20 text-[#ffb020] border border-[#ffb020]/40 rounded-lg text-xs font-bold">Admin (EXT3)</button>
+                <button type="button" onClick={() => { setCurrentUser(INITIAL_USERS[1]); setUsers(INITIAL_USERS); }} className="px-3 py-1.5 bg-[#3b82f6]/20 text-[#3b82f6] border border-[#3b82f6]/40 rounded-lg text-xs font-bold">Usuario (DevUser)</button>
+              </div>
+            </div>
           </div>
           <div className="bg-[#1d242e] p-6 rounded-xl border border-[#2a323d] space-y-4">
             <div className="flex border-b border-[#2a323d] mb-4">
@@ -720,7 +688,6 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#0e1116] text-[#e9eef5]' : 'bg-[#f4f6fb] text-[#0f172a]'}`}>
-      {/* HEADER PRINCIPAL */}
       <header className="sticky top-0 z-40 bg-[#161b23]/90 backdrop-blur-md border-b border-[#2a323d] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 font-bold text-lg bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">
           ◈ Elraizer Community
@@ -749,7 +716,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* NAVEGACIÓN COMPLETA */}
       <nav className="sticky top-14 z-30 bg-[#161b23] border-b border-[#2a323d] flex justify-center gap-2 p-2 overflow-x-auto">
         <button onClick={() => setActiveTab('feed')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'feed' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🏠 Feed</button>
         <button onClick={() => setActiveTab('marketplace')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'marketplace' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🛒 Marketplace</button>
@@ -762,7 +728,6 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
-        {/* TAB FEED */}
         {activeTab === 'feed' && (
           <div className="space-y-4">
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
@@ -831,27 +796,11 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-sm leading-relaxed">{p.text}</p>
-                {p.attachments && p.attachments.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-                    {p.attachments.map(att => (
-                      <div key={att.id} className="bg-[#1d242e] p-2 rounded-xl border border-[#2a323d] overflow-hidden">
-                        {att.type === 'image' && <img src={att.url} alt={att.name} className="w-full h-48 object-cover rounded-lg" />}
-                        {att.type === 'video' && <video src={att.url} controls className="w-full h-48 object-cover rounded-lg" />}
-                        {att.type === 'file' && (
-                          <a href={att.url} download={att.name} className="flex items-center gap-2 p-3 text-xs text-[#00d4b1] font-semibold hover:underline">
-                            <Paperclip size={18} /> Descargar {att.name}
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
           </div>
         )}
 
-        {/* TAB MARKETPLACE */}
         {activeTab === 'marketplace' && (
           <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4">
@@ -925,7 +874,6 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB CHAT GLOBAL */}
         {activeTab === 'chat' && (
           <div className="bg-[#161b23] border border-[#2a323d] rounded-xl flex flex-col h-[600px]">
             <div className="p-4 border-b border-[#2a323d] font-semibold text-sm flex items-center justify-between">
@@ -950,7 +898,6 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MENSAJERÍA DIRECTA */}
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-3 flex flex-col">
@@ -1049,7 +996,6 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB PERFIL */}
         {activeTab === 'profile' && (
           <div className="bg-[#161b23] border border-[#2a323d] rounded-2xl p-6 space-y-4">
             <div className="flex items-center gap-4 border-b border-[#2a323d] pb-4">
@@ -1066,7 +1012,6 @@ export default function App() {
         )}
       </main>
 
-      {/* MODAL PUBLICAR PRODUCTO MARKETPLACE */}
       {showSellModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#00d4b1]/50 text-[#e9eef5] rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
@@ -1140,7 +1085,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL CARRITO */}
       {showCartModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#2a323d] text-[#e9eef5] rounded-2xl max-w-md w-full p-6 space-y-4">
