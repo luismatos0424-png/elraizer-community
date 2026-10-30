@@ -7,7 +7,7 @@ import {
   DollarSign, Package, CheckCircle2, Crown, Users, Settings, Activity, Camera,
   Edit3, Globe, Github, Twitter, Linkedin, Briefcase, MapPin, Calendar, Heart, Eye,
   Archive, Inbox, Send as SendIcon, FileText, CheckCheck, UserMinus, ShieldOff, Layers, Filter,
-  Wifi, Circle, Award as AwardIcon, Gift
+  Wifi, Circle, Award as AwardIcon, Gift, Clock, Key, KeyRound, Upload, Link as LinkIcon
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
@@ -15,13 +15,24 @@ const AVATAR_COLORS = [
   '#3b82f6', '#10b981', '#ec4899', '#8b5cf6'
 ];
 
-// RANGOS Y LIMITES DIARIOS DE PUNTOS SEGUN CATEGORIA/RANGO
+const MARKETPLACE_CATEGORIES = [
+  'Todos',
+  'Software & Apps',
+  'Scripts & Bot Tools',
+  'Plantillas & UI Kits',
+  'Servicios IT & Hosting',
+  'Cuentas & Licencias',
+  'Cursos & E-Books',
+  'Hardware & Equipos',
+  'Otros Recursos'
+];
+
 const RANK_POINTS_LIMITS = {
-  master: 500,     // Administrador/Maestro
-  moderador: 200,  // Moderadores
-  veterano: 100,   // Usuarios veteranos
-  miembro: 50,     // Usuarios estándar
-  nuevo: 20        // Nuevos registrados
+  master: 500,
+  moderador: 200,
+  veterano: 100,
+  miembro: 50,
+  nuevo: 20
 };
 
 const INITIAL_USERS = [
@@ -111,34 +122,43 @@ const INITIAL_POSTS = [
   }
 ];
 
+// Helper para fecha de expiración a 30 días
+const getFutureDateString = (daysAhead) => {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
+  return d.toISOString();
+};
+
 const INITIAL_PRODUCTS = [
   {
     id: 'prod_1',
     title: 'Kit de Scripts Automation Tampermonkey',
     description: 'Pack de scripts utilitarios en JavaScript para automatizar tareas web y scraping básico.',
     price: 25.00,
-    category: 'Software',
+    category: 'Scripts & Bot Tools',
     seller_id: 'ext3-id',
     seller_name: 'EXT3',
     seller_color: '#ffb020',
     image: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&auto=format&fit=crop&q=80',
     rating: 4.9,
     sales: 18,
-    created_at: 'Ayer'
+    createdAt: new Date().toISOString(),
+    expiresAt: getFutureDateString(28) // Le quedan 28 días
   },
   {
     id: 'prod_2',
     title: 'Plantilla Premium Single-Page WebView',
     description: 'Diseño responsive ultrafino optimizado para portales comunitarios y paneles e-commerce.',
     price: 45.00,
-    category: 'Plantillas',
+    category: 'Plantillas & UI Kits',
     seller_id: 'usr_demo1',
     seller_name: 'DevUser',
     seller_color: '#3b82f6',
     image: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=600&auto=format&fit=crop&q=80',
     rating: 5.0,
     sales: 24,
-    created_at: 'Hace 3 días'
+    createdAt: new Date().toISOString(),
+    expiresAt: getFutureDateString(15) // Le quedan 15 días
   }
 ];
 
@@ -165,7 +185,10 @@ export default function App() {
 
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem('elraizer_products');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    let loaded = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    // Filtrar expirados de más de 30 días automáticamente
+    const now = new Date();
+    return loaded.filter(p => !p.expiresAt || new Date(p.expiresAt) > now);
   });
 
   const [cart, setCart] = useState(() => {
@@ -187,63 +210,100 @@ export default function App() {
     ];
   });
 
-  // Lista de IDs de usuarios con conversaciones fijadas (Pinned)
   const [pinnedUserIds, setPinnedUserIds] = useState(() => {
     const saved = localStorage.getItem('elraizer_pinned_dms');
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Navigation
+  // Navigation & Marketplace Filters
   const [activeTab, setActiveTab] = useState('feed');
   const [activeDmUser, setActiveDmUser] = useState(null);
   const [dmFolder, setDmFolder] = useState('all');
   const [dmSearchQuery, setDmSearchQuery] = useState('');
 
-  // Modals
+  const [selectedCategory, setSelectedCategory] = useState('Todos');
+  const [marketSearchQuery, setMarketSearchQuery] = useState('');
+
+  // Modals & State
   const [showCartModal, setShowCartModal] = useState(false);
   const [showSellModal, setShowSellModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [selectedAdminUser, setSelectedAdminUser] = useState(null);
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [adminPasswordSuccess, setAdminPasswordSuccess] = useState('');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
-  // Modal para Otorgar Puntos Personalizados
+  // Modal para Otorgar Puntos
   const [pointsModalPost, setPointsModalPost] = useState(null);
   const [pointsToGiveInput, setPointsToGiveInput] = useState('');
   const [pointsError, setPointsError] = useState('');
 
-  // New Post Inputs & File Attachments
+  // Formulario Publicar Producto Marketplace (Soporta Archivo o Enlace)
+  const [newProdTitle, setNewProdTitle] = useState('');
+  const [newProdCategory, setNewProdCategory] = useState('Software & Apps');
+  const [newProdPrice, setNewProdPrice] = useState('');
+  const [newProdDescription, setNewProdDescription] = useState('');
+  const [prodImageType, setProdImageType] = useState('url'); // 'url' | 'file'
+  const [prodImageUrl, setProdImageUrl] = useState('');
+  const [prodImagePreview, setProdImagePreview] = useState('');
+
+  // Inputs
   const [newPostText, setNewPostText] = useState('');
   const [postAttachments, setPostAttachments] = useState([]);
   const postFileInputRef = useRef(null);
+  const prodFileInputRef = useRef(null);
 
-  // Chat & DM Inputs
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
 
-  // Profile Edit State
-  const [editFullName, setEditFullName] = useState('');
-  const [editHeadline, setEditHeadline] = useState('');
-  const [editBio, setEditBio] = useState('');
-  const [editLocation, setEditLocation] = useState('');
-  const [editWebsite, setEditWebsite] = useState('');
-  const [editGithub, setEditGithub] = useState('');
-  const [editTwitter, setEditTwitter] = useState('');
+  // BroadcastChannel y Polling para Sincronización Real
+  const broadcastChannelRef = useRef(null);
 
-  // Escuchar cambios de localStorage en tiempo real entre pestañas o sesiones
   useEffect(() => {
-    const syncData = () => {
-      const savedUsers = localStorage.getItem('elraizer_users');
-      if (savedUsers) setUsers(JSON.parse(savedUsers));
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('elraizer_messaging_channel');
+      broadcastChannelRef.current = bc;
 
-      const savedDms = localStorage.getItem('elraizer_dms');
-      if (savedDms) setDirectMessages(JSON.parse(savedDms));
+      bc.onmessage = (event) => {
+        if (event.data && event.data.type === 'NEW_DM') {
+          const freshDms = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
+          setDirectMessages(freshDms);
+        } else if (event.data && event.data.type === 'USERS_UPDATE') {
+          const freshUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
+          setUsers(freshUsers);
+        } else if (event.data && event.data.type === 'PRODUCTS_UPDATE') {
+          const freshProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
+          setProducts(freshProds);
+        }
+      };
+    }
 
-      const savedPosts = localStorage.getItem('elraizer_posts');
-      if (savedPosts) setPosts(JSON.parse(savedPosts));
+    const intervalId = setInterval(() => {
+      const freshDmsStr = localStorage.getItem('elraizer_dms');
+      if (freshDmsStr) {
+        const freshDms = JSON.parse(freshDmsStr);
+        setDirectMessages(prev => JSON.stringify(prev) !== JSON.stringify(freshDms) ? freshDms : prev);
+      }
+
+      const freshUsersStr = localStorage.getItem('elraizer_users');
+      if (freshUsersStr) {
+        const freshUsers = JSON.parse(freshUsersStr);
+        setUsers(prev => JSON.stringify(prev) !== JSON.stringify(freshUsers) ? freshUsers : prev);
+      }
+
+      const freshProdsStr = localStorage.getItem('elraizer_products');
+      if (freshProdsStr) {
+        const freshProds = JSON.parse(freshProdsStr);
+        const now = new Date();
+        const validProds = freshProds.filter(p => !p.expiresAt || new Date(p.expiresAt) > now);
+        setProducts(prev => JSON.stringify(prev) !== JSON.stringify(validProds) ? validProds : prev);
+      }
+    }, 1500);
+
+    return () => {
+      if (broadcastChannelRef.current) broadcastChannelRef.current.close();
+      clearInterval(intervalId);
     };
-
-    window.addEventListener('storage', syncData);
-    return () => window.removeEventListener('storage', syncData);
   }, []);
 
   // Sync LocalStorage
@@ -255,46 +315,138 @@ export default function App() {
   useEffect(() => { localStorage.setItem('elraizer_dms', JSON.stringify(directMessages)); }, [directMessages]);
   useEffect(() => { localStorage.setItem('elraizer_pinned_dms', JSON.stringify(pinnedUserIds)); }, [pinnedUserIds]);
 
-  useEffect(() => {
-    if (currentUser) {
-      setEditFullName(currentUser.fullName || '');
-      setEditHeadline(currentUser.headline || '');
-      setEditBio(currentUser.bio || '');
-      setEditLocation(currentUser.location || '');
-      setEditWebsite(currentUser.website || '');
-      setEditGithub(currentUser.github || '');
-      setEditTwitter(currentUser.twitter || '');
-    }
-  }, [currentUser]);
-
-  // Marcar como leídos los mensajes del chat activo
+  // Marcar como leídos
   useEffect(() => {
     if (currentUser && activeDmUser && activeTab === 'dm') {
       const hasUnread = directMessages.some(m => m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id && !m.read);
       if (hasUnread) {
-        setDirectMessages(prev => prev.map(m => {
-          if (m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id) {
-            return { ...m, read: true };
-          }
-          return m;
-        }));
+        setDirectMessages(prev => {
+          const updated = prev.map(m => {
+            if (m.sender_id === activeDmUser.id && m.receiver_id === currentUser.id) {
+              return { ...m, read: true };
+            }
+            return m;
+          });
+          localStorage.setItem('elraizer_dms', JSON.stringify(updated));
+          if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'NEW_DM' });
+          return updated;
+        });
       }
     }
   }, [activeDmUser, currentUser, activeTab, directMessages]);
 
-  // Online status helper
   const onlineUsers = users.filter(u => u.isOnline);
-
-  // Contador global de mensajes no leídos para el usuario actual
   const unreadTotalCount = currentUser ? directMessages.filter(m => m.receiver_id === currentUser.id && !m.read).length : 0;
 
-  // Rango / Categoria límite de puntos del usuario actual
   const userRoleKey = currentUser?.chat_role || 'miembro';
   const maxDailyPoints = RANK_POINTS_LIMITS[userRoleKey] || 50;
   const currentGiven = currentUser?.dailyPointsGiven || 0;
   const remainingDailyPoints = Math.max(0, maxDailyPoints - currentGiven);
 
-  // Toggle fijar conversación
+  // Manejador para cargar la imagen del producto mediante archivo local
+  const handleProductFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProdImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Crear o renovar publicación de producto en Marketplace
+  const handlePublishProduct = (e) => {
+    e.preventDefault();
+    if (!newProdTitle || !newProdPrice || !newProdDescription) return;
+
+    const finalImage = prodImageType === 'url' ? (prodImageUrl.trim() || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80') : (prodImagePreview || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80');
+
+    const newProduct = {
+      id: 'prod_' + Date.now(),
+      title: newProdTitle.trim(),
+      description: newProdDescription.trim(),
+      price: parseFloat(newProdPrice) || 0,
+      category: newProdCategory,
+      seller_id: currentUser.id,
+      seller_name: currentUser.username,
+      seller_color: currentUser.avatar_color,
+      image: finalImage,
+      rating: 5.0,
+      sales: 0,
+      createdAt: new Date().toISOString(),
+      expiresAt: getFutureDateString(30) // Expira en 30 días exactos
+    };
+
+    const updatedProds = [newProduct, ...products];
+    setProducts(updatedProds);
+    localStorage.setItem('elraizer_products', JSON.stringify(updatedProds));
+
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({ type: 'PRODUCTS_UPDATE' });
+    }
+
+    // Limpiar formulario y cerrar modal
+    setNewProdTitle('');
+    setNewProdPrice('');
+    setNewProdDescription('');
+    setProdImageUrl('');
+    setProdImagePreview('');
+    setShowSellModal(false);
+  };
+
+  // Renovar publicación por 30 días adicionales
+  const handleRenewProduct = (productId) => {
+    const updatedProds = products.map(p => {
+      if (p.id === productId) {
+        return {
+          ...p,
+          expiresAt: getFutureDateString(30)
+        };
+      }
+      return p;
+    });
+
+    setProducts(updatedProds);
+    localStorage.setItem('elraizer_products', JSON.stringify(updatedProds));
+    alert('¡Publicación renovada con éxito por 30 días adicionales!');
+  };
+
+  // Admin: Cambiar contraseña de usuario en Panel Maestro
+  const handleAdminChangePassword = (e) => {
+    e.preventDefault();
+    if (!selectedAdminUser || !newAdminPassword.trim()) return;
+
+    const updatedUsers = users.map(u => {
+      if (u.id === selectedAdminUser.id) {
+        return { ...u, password: newAdminPassword.trim() };
+      }
+      return u;
+    });
+
+    setUsers(updatedUsers);
+    setSelectedAdminUser({ ...selectedAdminUser, password: newAdminPassword.trim() });
+    localStorage.setItem('elraizer_users', JSON.stringify(updatedUsers));
+
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({ type: 'USERS_UPDATE' });
+    }
+
+    setAdminPasswordSuccess(`¡Contraseña de @${selectedAdminUser.username} actualizada correctamente!`);
+    setNewAdminPassword('');
+    setTimeout(() => setAdminPasswordSuccess(''), 4000);
+  };
+
+  // Helper para días restantes antes de expiración
+  const getDaysRemaining = (expiresAt) => {
+    if (!expiresAt) return 30;
+    const now = new Date();
+    const exp = new Date(expiresAt);
+    const diffTime = exp - now;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
+  };
+
   const togglePinConversation = (targetUserId, e) => {
     e.stopPropagation();
     if (pinnedUserIds.includes(targetUserId)) {
@@ -304,7 +456,6 @@ export default function App() {
     }
   };
 
-  // Otorgar Puntos con validación estricta de límites diarios y saldo
   const handleGivePointsSubmit = (e) => {
     e.preventDefault();
     setPointsError('');
@@ -325,10 +476,8 @@ export default function App() {
       return;
     }
 
-    // 1. Actualizar Post
     setPosts(posts.map(p => p.id === pointsModalPost.id ? { ...p, votes: p.votes + pointsNum } : p));
 
-    // 2. Actualizar Usuario Autor del Post (Suma Puntos)
     setUsers(prevUsers => prevUsers.map(u => {
       if (u.id === pointsModalPost.author_id) {
         return { ...u, points: u.points + pointsNum };
@@ -343,7 +492,6 @@ export default function App() {
       return u;
     }));
 
-    // 3. Actualizar currentUser
     setCurrentUser(prev => ({
       ...prev,
       points: prev.chat_role === 'master' ? prev.points : prev.points - pointsNum,
@@ -354,7 +502,6 @@ export default function App() {
     setPointsToGiveInput('');
   };
 
-  // Handle Checkout / Direct Message Payment Request
   const handleCheckout = () => {
     if (cart.length === 0 || !currentUser) return;
 
@@ -371,7 +518,12 @@ export default function App() {
         read: false
       };
 
-      setDirectMessages(prev => [...prev, newDm]);
+      setDirectMessages(prev => {
+        const updated = [...prev, newDm];
+        localStorage.setItem('elraizer_dms', JSON.stringify(updated));
+        if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'NEW_DM' });
+        return updated;
+      });
     });
 
     setCart([]);
@@ -379,7 +531,6 @@ export default function App() {
     setActiveTab('dm');
   };
 
-  // Handle Post File Attachments
   const handlePostFileUpload = (e, fileType) => {
     const files = Array.from(e.target.files);
     files.forEach(file => {
@@ -419,7 +570,6 @@ export default function App() {
     setPostAttachments([]);
   };
 
-  // Auth Handlers con actualización inmediata de datos almacenados
   const handleLogin = (e) => {
     e.preventDefault();
     setAuthError('');
@@ -439,7 +589,6 @@ export default function App() {
       setUsers(updatedList);
       setCurrentUser(loggedUser);
 
-      // Cargar mensajes actualizados
       const savedDms = localStorage.getItem('elraizer_dms');
       if (savedDms) setDirectMessages(JSON.parse(savedDms));
     } else {
@@ -474,11 +623,13 @@ export default function App() {
       role: 'user', chat_role: 'nuevo', points: 10, dailyPointsGiven: 0, joinedDate: 'Reciente', status: 'active', isOnline: true
     };
 
-    setUsers([...users, newUser]);
+    const updatedUsers = [...users, newUser];
+    setUsers(updatedUsers);
     setCurrentUser(newUser);
+    localStorage.setItem('elraizer_users', JSON.stringify(updatedUsers));
+    if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'USERS_UPDATE' });
   };
 
-  // Admin Actions
   const handleAdminUserAction = (userId, action) => {
     if (userId === 'ext3-id') return;
     setUsers(users.map(u => {
@@ -501,32 +652,37 @@ export default function App() {
     }
   };
 
-  // Clear Conversations / DMs
   const handleClearChatHistory = (targetUserId, e) => {
     if (e) e.stopPropagation();
     if (window.confirm('¿Deseas vaciar todo el historial de conversaciones con este usuario?')) {
-      setDirectMessages(directMessages.filter(dm => 
+      const updated = directMessages.filter(dm => 
         !(dm.sender_id === currentUser.id && dm.receiver_id === targetUserId) &&
         !(dm.sender_id === targetUserId && dm.receiver_id === currentUser.id)
-      ));
-      if (activeDmUser?.id === targetUserId) {
-        setActiveDmUser(null);
-      }
+      );
+      setDirectMessages(updated);
+      localStorage.setItem('elraizer_dms', JSON.stringify(updated));
+      if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'NEW_DM' });
+      if (activeDmUser?.id === targetUserId) setActiveDmUser(null);
     }
   };
 
   const handleClearAllConversations = () => {
     if (window.confirm('¿Deseas vaciar TODO tu panel de mensajes con TODOS los usuarios?')) {
-      setDirectMessages(directMessages.filter(dm => dm.sender_id !== currentUser.id && dm.receiver_id !== currentUser.id));
+      const updated = directMessages.filter(dm => dm.sender_id !== currentUser.id && dm.receiver_id !== currentUser.id);
+      setDirectMessages(updated);
+      localStorage.setItem('elraizer_dms', JSON.stringify(updated));
+      if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'NEW_DM' });
       setActiveDmUser(null);
     }
   };
 
   const handleDeleteSingleDm = (dmId) => {
-    setDirectMessages(directMessages.filter(dm => dm.id !== dmId));
+    const updated = directMessages.filter(dm => dm.id !== dmId);
+    setDirectMessages(updated);
+    localStorage.setItem('elraizer_dms', JSON.stringify(updated));
+    if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ type: 'NEW_DM' });
   };
 
-  // ENVÍO DE MENSAJES CON PERSISTENCIA
   const handleSendDm = () => {
     if (!dmInput.trim() || !currentUser || !activeDmUser) return;
     
@@ -539,16 +695,19 @@ export default function App() {
       read: false
     };
 
-    setDirectMessages(prevMessages => {
-      const updated = [...prevMessages, dm];
-      localStorage.setItem('elraizer_dms', JSON.stringify(updated));
-      return updated;
-    });
+    const currentDmsFromStorage = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
+    const updatedDms = [...currentDmsFromStorage, dm];
+
+    localStorage.setItem('elraizer_dms', JSON.stringify(updatedDms));
+    setDirectMessages(updatedDms);
+
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({ type: 'NEW_DM', payload: dm });
+    }
 
     setDmInput('');
   };
 
-  // Filter users for DM with pinned sorting
   const filteredUsersForDm = users.filter(u => {
     if (u.id === currentUser?.id) return false;
     if (!dmSearchQuery.trim()) return true;
@@ -559,6 +718,13 @@ export default function App() {
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
     return 0;
+  });
+
+  // Filtrado dinámico de Marketplace
+  const filteredProducts = products.filter(p => {
+    const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
+    const matchesQuery = !marketSearchQuery.trim() || p.title.toLowerCase().includes(marketSearchQuery.toLowerCase()) || p.description.toLowerCase().includes(marketSearchQuery.toLowerCase());
+    return matchesCategory && matchesQuery;
   });
 
   if (!currentUser) {
@@ -623,7 +789,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* SECCIÓN VISIBLE DEL PANEL PRINCIPAL: USUARIOS CONECTADOS */}
+      {/* USUARIOS CONECTADOS */}
       <div className="bg-[#161b23] border-b border-[#2a323d] px-4 py-2.5">
         <div className="max-w-4xl mx-auto flex items-center justify-between text-xs">
           <div className="flex items-center gap-2 text-[#00d4b1] font-bold">
@@ -647,7 +813,6 @@ export default function App() {
         <button onClick={() => setActiveTab('marketplace')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'marketplace' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>🛒 Marketplace</button>
         <button onClick={() => setActiveTab('chat')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>💬 Chat Global</button>
         
-        {/* PESTAÑA MENSAJERÍA CON NOTIFICACIÓN Y INSIGNIA DE NO LEÍDOS */}
         <button onClick={() => setActiveTab('dm')} className={`relative px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'dm' ? 'bg-[#7c5cff] text-white' : 'text-[#8b97a8] hover:bg-[#1d242e]'}`}>
           ✉️ Mensajería Pro
           {unreadTotalCount > 0 && (
@@ -759,50 +924,121 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MARKETPLACE */}
+        {/* TAB MARKETPLACE PROFESIONAL */}
         {activeTab === 'marketplace' && (
           <div className="space-y-6">
-            <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="bg-[#161b23] border border-[#2a323d] p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4">
               <div>
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-[#00d4b1] to-[#7c5cff] bg-clip-text text-transparent">Marketplace Digital</h2>
-                <p className="text-xs text-[#8b97a8] mt-1">Compra y vende recursos, servicios y software de forma segura.</p>
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-[#00d4b1] to-[#7c5cff] bg-clip-text text-transparent flex items-center gap-2">
+                  🛒 Marketplace Pro Elraizer
+                </h2>
+                <p className="text-xs text-[#8b97a8] mt-1">
+                  Publicaciones activas durante <strong className="text-white">30 días</strong> con autorenovación. Compra y venta directa.
+                </p>
               </div>
-              <button onClick={() => setShowSellModal(true)} className="px-4 py-2.5 bg-gradient-to-r from-[#00d4b1] to-[#10b981] text-slate-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg">
-                <Plus size={16} /> Publicar Producto
+              <button 
+                onClick={() => setShowSellModal(true)} 
+                className="px-5 py-3 bg-gradient-to-r from-[#00d4b1] to-[#10b981] hover:from-[#00b89a] hover:to-[#059669] text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-2 shadow-xl transition-all"
+              >
+                <Plus size={18} /> Publicar un Producto
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {products.map(prod => (
-                <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden flex flex-col justify-between group">
-                  <div>
-                    <div className="h-44 overflow-hidden relative">
-                      <img src={prod.image} alt={prod.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                      <span className="absolute top-3 right-3 bg-[#161b23]/80 backdrop-blur-md text-[#00d4b1] border border-[#00d4b1]/30 text-[10px] font-bold px-2.5 py-1 rounded-full">{prod.category}</span>
-                      {currentUser.role === 'admin' && (
-                        <button onClick={() => setProducts(products.filter(item => item.id !== prod.id))} className="absolute top-3 left-3 bg-[#ff5470] text-white p-1.5 rounded-xl text-xs">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                    <div className="p-4 space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-[#8b97a8]">
-                        <div className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ backgroundColor: prod.seller_color }}>{prod.seller_name[0]}</div>
-                        <span>@{prod.seller_name}</span>
-                      </div>
-                      <h3 className="font-bold text-sm text-[#e9eef5]">{prod.title}</h3>
-                      <p className="text-xs text-[#8b97a8] line-clamp-2">{prod.description}</p>
-                    </div>
-                  </div>
-                  <div className="p-4 pt-0 flex items-center justify-between border-t border-[#2a323d]/50 mt-2">
-                    <div className="text-lg font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</div>
-                    <button onClick={() => setCart([...cart, { ...prod, qty: 1 }])} className="px-3 py-1.5 bg-[#7c5cff] text-white text-xs font-semibold rounded-xl flex items-center gap-1.5">
-                      <ShoppingCart size={14} /> Añadir al Carrito
-                    </button>
-                  </div>
-                </div>
-              ))}
+            {/* BARRA DE BÚSQUEDA Y CATEGORÍAS */}
+            <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
+              <div className="relative">
+                <Search size={16} className="absolute left-3.5 top-3 text-[#8b97a8]" />
+                <input
+                  type="text"
+                  value={marketSearchQuery}
+                  onChange={(e) => setMarketSearchQuery(e.target.value)}
+                  placeholder="Buscar en la tienda (Software, scripts, plantillas, cursos...)"
+                  className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-[#00d4b1]"
+                />
+              </div>
+
+              {/* CHIPS DE CATEGORÍAS */}
+              <div className="flex gap-2 overflow-x-auto pb-1 pt-1">
+                {MARKETPLACE_CATEGORIES.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-[#00d4b1] text-slate-950 font-bold' : 'bg-[#1d242e] text-[#8b97a8] hover:bg-[#2a323d] hover:text-white'}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* LISTA DE PRODUCTOS */}
+            {filteredProducts.length === 0 ? (
+              <div className="text-center py-12 bg-[#161b23] border border-[#2a323d] rounded-2xl p-6">
+                <ShoppingBag size={48} className="mx-auto text-[#8b97a8] mb-3 opacity-50" />
+                <h3 className="font-bold text-base text-white">No hay productos en esta categoría</h3>
+                <p className="text-xs text-[#8b97a8] mt-1">Sé el primero en publicar recursos o herramientas para la comunidad.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {filteredProducts.map(prod => {
+                  const daysLeft = getDaysRemaining(prod.expiresAt);
+                  const isOwner = currentUser?.id === prod.seller_id;
+
+                  return (
+                    <div key={prod.id} className="bg-[#161b23] border border-[#2a323d] rounded-2xl overflow-hidden flex flex-col justify-between group hover:border-[#7c5cff]/50 transition-all shadow-lg">
+                      <div>
+                        <div className="h-48 overflow-hidden relative bg-[#1d242e]">
+                          <img src={prod.image} alt={prod.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                          <span className="absolute top-3 right-3 bg-[#161b23]/90 backdrop-blur-md text-[#00d4b1] border border-[#00d4b1]/30 text-[10px] font-bold px-2.5 py-1 rounded-full shadow">
+                            {prod.category}
+                          </span>
+
+                          <span className={`absolute bottom-3 left-3 text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow backdrop-blur-md ${daysLeft <= 5 ? 'bg-[#ff5470]/90 text-white' : 'bg-[#161b23]/90 text-[#ffb020] border border-[#ffb020]/30'}`}>
+                            <Clock size={12} /> Expiración: {daysLeft} días
+                          </span>
+
+                          {currentUser.role === 'admin' && (
+                            <button onClick={() => setProducts(products.filter(item => item.id !== prod.id))} className="absolute top-3 left-3 bg-[#ff5470] text-white p-1.5 rounded-xl text-xs shadow hover:bg-[#e03e58]">
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                        <div className="p-4 space-y-2">
+                          <div className="flex items-center justify-between text-xs text-[#8b97a8]">
+                            <div className="flex items-center gap-2">
+                              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: prod.seller_color }}>{prod.seller_name[0]}</div>
+                              <span className="font-semibold text-white">@{prod.seller_name}</span>
+                            </div>
+                            <span className="text-[10px] bg-[#1d242e] px-2 py-0.5 rounded border border-[#2a323d]">{prod.sales || 0} Ventas</span>
+                          </div>
+                          <h3 className="font-bold text-base text-[#e9eef5] line-clamp-1">{prod.title}</h3>
+                          <p className="text-xs text-[#8b97a8] line-clamp-2 leading-relaxed">{prod.description}</p>
+                        </div>
+                      </div>
+
+                      <div className="p-4 pt-0 flex items-center justify-between border-t border-[#2a323d]/50 mt-2">
+                        <div>
+                          <span className="text-[10px] text-[#8b97a8] block">Precio USD</span>
+                          <span className="text-xl font-bold text-[#00d4b1]">${prod.price.toFixed(2)}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isOwner && (
+                            <button onClick={() => handleRenewProduct(prod.id)} title="Renovar publicación por 30 días adicionales" className="px-3 py-2 bg-[#ffb020]/20 hover:bg-[#ffb020]/30 text-[#ffb020] border border-[#ffb020]/40 text-xs font-bold rounded-xl flex items-center gap-1 transition-all">
+                              <RefreshCw size={14} /> Renovar 30D
+                            </button>
+                          )}
+
+                          <button onClick={() => setCart([...cart, { ...prod, qty: 1 }])} className="px-3.5 py-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md transition-all">
+                            <ShoppingCart size={14} /> Comprar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -831,7 +1067,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB MENSAJERÍA DIRECTA REPARADA */}
+        {/* TAB MENSAJERÍA DIRECTA */}
         {activeTab === 'dm' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
             <div className="bg-[#161b23] border border-[#2a323d] rounded-xl p-3 space-y-3 flex flex-col">
@@ -1019,6 +1255,136 @@ export default function App() {
         )}
       </main>
 
+      {/* MODAL PUBLICAR PRODUCTO MARKETPLACE (EXPIRACIÓN 30 DÍAS / FOTO POR ENLACE O ARCHIVO) */}
+      {showSellModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#161b23] border border-[#00d4b1]/50 text-[#e9eef5] rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setShowSellModal(false)} className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"><X size={20} /></button>
+
+            <div className="flex items-center gap-2 text-[#00d4b1] font-bold text-lg border-b border-[#2a323d] pb-3">
+              <ShoppingBag size={22} /> Publicar Nuevo Producto en Marketplace
+            </div>
+
+            <form onSubmit={handlePublishProduct} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Título del Producto / Servicio *</label>
+                <input
+                  type="text"
+                  required
+                  value={newProdTitle}
+                  onChange={(e) => setNewProdTitle(e.target.value)}
+                  placeholder="Ej. Script Automatizado, Licencia Hosting, Plantilla Web..."
+                  className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-xs focus:outline-none focus:border-[#00d4b1]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Categoría *</label>
+                  <select
+                    value={newProdCategory}
+                    onChange={(e) => setNewProdCategory(e.target.value)}
+                    className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-xs focus:outline-none focus:border-[#00d4b1] text-white"
+                  >
+                    {MARKETPLACE_CATEGORIES.filter(c => c !== 'Todos').map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Precio (USD) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={newProdPrice}
+                    onChange={(e) => setNewProdPrice(e.target.value)}
+                    placeholder="25.00"
+                    className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-xs focus:outline-none focus:border-[#00d4b1]"
+                  />
+                </div>
+              </div>
+
+              {/* SELECCIÓN DE MÉTODO DE FOTO (ENLACE O ARCHIVO) */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-[#8b97a8]">Imagen del Producto</label>
+                <div className="flex border border-[#2a323d] rounded-xl bg-[#1d242e] p-1 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setProdImageType('url')}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 ${prodImageType === 'url' ? 'bg-[#00d4b1] text-slate-950' : 'text-[#8b97a8]'}`}
+                  >
+                    <LinkIcon size={14} /> Por Enlace URL
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProdImageType('file')}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 ${prodImageType === 'file' ? 'bg-[#00d4b1] text-slate-950' : 'text-[#8b97a8]'}`}
+                  >
+                    <Upload size={14} /> Subir Archivo
+                  </button>
+                </div>
+
+                {prodImageType === 'url' ? (
+                  <input
+                    type="url"
+                    value={prodImageUrl}
+                    onChange={(e) => setProdImageUrl(e.target.value)}
+                    placeholder="https://ejemplo.com/imagen.jpg"
+                    className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-xs focus:outline-none focus:border-[#00d4b1]"
+                  />
+                ) : (
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={prodFileInputRef}
+                      onChange={handleProductFileChange}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => prodFileInputRef.current.click()}
+                      className="w-full bg-[#1d242e] border border-dashed border-[#00d4b1] hover:bg-[#2a323d] text-[#00d4b1] p-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
+                    >
+                      <ImageIcon size={18} /> Elegir Imagen del Dispositivo
+                    </button>
+                  </div>
+                )}
+
+                {(prodImageUrl || prodImagePreview) && (
+                  <div className="mt-2 h-28 rounded-xl overflow-hidden border border-[#2a323d]">
+                    <img src={prodImageType === 'url' ? prodImageUrl : prodImagePreview} alt="Vista Previa" className="w-full h-full object-cover" />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Descripción Detallada *</label>
+                <textarea
+                  required
+                  rows="3"
+                  value={newProdDescription}
+                  onChange={(e) => setNewProdDescription(e.target.value)}
+                  placeholder="Detalla qué incluye el producto, requisitos, garantía o soporte..."
+                  className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-xs focus:outline-none focus:border-[#00d4b1] resize-none"
+                />
+              </div>
+
+              <div className="p-3 bg-[#ffb020]/10 border border-[#ffb020]/30 rounded-xl text-xs text-[#ffb020] flex items-center gap-2">
+                <Clock size={18} className="shrink-0" />
+                <span>Esta publicación estará activa en Marketplace durante <strong>30 días</strong>. Tras su expiración podrás renovarla gratis con un solo clic.</span>
+              </div>
+
+              <button type="submit" className="w-full bg-gradient-to-r from-[#00d4b1] to-[#10b981] text-slate-950 font-bold py-3 rounded-xl text-xs shadow-lg">
+                Publicar Ahora en Marketplace
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* RECUADRO PARA OTORGAR PUNTOS */}
       {pointsModalPost && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -1060,7 +1426,7 @@ export default function App() {
         </div>
       )}
 
-      {/* PANEL MAESTRO */}
+      {/* PANEL MAESTRO CON REPETICIÓN DE CONTRASEÑA Y DETALLES DE USUARIO */}
       {showAdminModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b23] border border-[#ffb020]/40 text-[#e9eef5] rounded-2xl max-w-4xl w-full p-6 space-y-6 shadow-2xl relative max-h-[90vh] flex flex-col">
@@ -1070,7 +1436,7 @@ export default function App() {
               <Crown size={28} className="text-[#ffb020]" />
               <div>
                 <h3 className="text-xl font-bold text-white">Panel Maestro de Administración</h3>
-                <p className="text-xs text-[#8b97a8]">Gestión total de usuarios, ventas, publicaciones y bloqueos.</p>
+                <p className="text-xs text-[#8b97a8]">Gestión de cuentas, recuperación de contraseña, correo y bloqueos.</p>
               </div>
             </div>
 
@@ -1079,7 +1445,7 @@ export default function App() {
                 <h4 className="text-xs font-bold text-[#8b97a8] uppercase mb-2">Usuarios Registrados ({users.length})</h4>
                 <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                   {users.map(u => (
-                    <button key={u.id} onClick={() => setSelectedAdminUser(u)} className={`w-full text-left p-2.5 rounded-xl border flex items-center justify-between ${selectedAdminUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#161b23] border-[#2a323d]'}`}>
+                    <button key={u.id} onClick={() => { setSelectedAdminUser(u); setAdminPasswordSuccess(''); }} className={`w-full text-left p-2.5 rounded-xl border flex items-center justify-between ${selectedAdminUser?.id === u.id ? 'bg-[#7c5cff]/20 border-[#7c5cff]' : 'bg-[#161b23] border-[#2a323d]'}`}>
                       <div className="truncate">
                         <div className="font-semibold text-xs text-white flex items-center gap-1">
                           @{u.username}
@@ -1103,7 +1469,10 @@ export default function App() {
                           @{selectedAdminUser.username}
                           <span className="text-xs bg-[#7c5cff]/20 text-[#a78bfa] px-2 py-0.5 rounded-full">{selectedAdminUser.role}</span>
                         </h4>
-                        <p className="text-xs text-[#8b97a8]">{selectedAdminUser.email} · Registrado: {selectedAdminUser.joinedDate}</p>
+                        <p className="text-xs text-[#00d4b1] font-semibold flex items-center gap-1 mt-0.5">
+                          <Mail size={13} /> Correo: {selectedAdminUser.email}
+                        </p>
+                        <p className="text-[10px] text-[#8b97a8] mt-0.5">Registrado: {selectedAdminUser.joinedDate}</p>
                       </div>
 
                       {selectedAdminUser.id !== 'ext3-id' && (
@@ -1121,9 +1490,40 @@ export default function App() {
                       )}
                     </div>
 
+                    {/* CAJA RECURSO CAMBIAR CONTRASEÑA DE USUARIOS */}
+                    <div className="bg-[#161b23] p-3.5 rounded-xl border border-[#7c5cff]/40 space-y-3">
+                      <h5 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <KeyRound size={16} className="text-[#ffb020]" /> Cambiar / Restablecer Contraseña de Usuario
+                      </h5>
+                      
+                      <div className="text-[11px] text-[#8b97a8]">
+                        Contraseña actual registrada: <strong className="text-white bg-[#1d242e] px-2 py-0.5 rounded border border-[#2a323d]">{selectedAdminUser.password || 'Sin asignar'}</strong>
+                      </div>
+
+                      {adminPasswordSuccess && (
+                        <div className="p-2 bg-[#00d4b1]/10 border border-[#00d4b1] text-[#00d4b1] rounded-lg text-xs">
+                          {adminPasswordSuccess}
+                        </div>
+                      )}
+
+                      <form onSubmit={handleAdminChangePassword} className="flex gap-2">
+                        <input
+                          type="text"
+                          required
+                          value={newAdminPassword}
+                          onChange={(e) => setNewAdminPassword(e.target.value)}
+                          placeholder="Nueva contraseña..."
+                          className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#7c5cff]"
+                        />
+                        <button type="submit" className="px-4 py-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white font-bold rounded-xl text-xs flex items-center gap-1">
+                          <Key size={14} /> Guardar
+                        </button>
+                      </form>
+                    </div>
+
                     <div className="space-y-2">
                       <h5 className="text-xs font-bold uppercase text-[#7c5cff]">Publicaciones en el Feed</h5>
-                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
                         {posts.filter(p => p.author_id === selectedAdminUser.id).map(p => (
                           <div key={p.id} className="bg-[#161b23] p-2.5 rounded-xl border border-[#2a323d] flex items-center justify-between text-xs">
                             <span className="truncate pr-2">{p.text}</span>
@@ -1132,25 +1532,10 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-
-                    <div className="space-y-2">
-                      <h5 className="text-xs font-bold uppercase text-[#00d4b1]">Productos Publicados / Vendidos</h5>
-                      <div className="space-y-2 max-h-40 overflow-y-auto">
-                        {products.filter(prod => prod.seller_id === selectedAdminUser.id).map(prod => (
-                          <div key={prod.id} className="bg-[#161b23] p-2.5 rounded-xl border border-[#2a323d] flex items-center justify-between text-xs">
-                            <div>
-                              <span className="font-bold text-white block">{prod.title}</span>
-                              <span className="text-[10px] text-[#00d4b1]">${prod.price} · {prod.sales} ventas</span>
-                            </div>
-                            <button onClick={() => setProducts(products.filter(item => item.id !== prod.id))} className="text-[#ff5470] p-1"><Trash2 size={14} /></button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
                   </>
                 ) : (
                   <div className="flex-1 flex items-center justify-center text-[#8b97a8] text-sm">
-                    Selecciona un usuario a la izquierda para auditar sus publicaciones, ventas y gestionar su acceso.
+                    Selecciona un usuario a la izquierda para ver su correo, cambiar su contraseña o auditar sus datos.
                   </div>
                 )}
               </div>
@@ -1168,9 +1553,9 @@ export default function App() {
               <button onClick={() => setIsEditingProfile(false)}><X size={18} /></button>
             </div>
             <form onSubmit={(e) => { e.preventDefault(); setIsEditingProfile(false); }} className="space-y-3">
-              <input type="text" value={editFullName} onChange={(e) => setEditFullName(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs" placeholder="Nombre completo" />
-              <input type="text" value={editHeadline} onChange={(e) => setEditHeadline(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs" placeholder="Titular profesional" />
-              <textarea value={editBio} onChange={(e) => setEditBio(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs resize-none" placeholder="Biografía" rows="3" />
+              <input type="text" value={currentUser.fullName || ''} onChange={(e) => setCurrentUser({ ...currentUser, fullName: e.target.value })} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs" placeholder="Nombre completo" />
+              <input type="text" value={currentUser.headline || ''} onChange={(e) => setCurrentUser({ ...currentUser, headline: e.target.value })} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs" placeholder="Titular profesional" />
+              <textarea value={currentUser.bio || ''} onChange={(e) => setCurrentUser({ ...currentUser, bio: e.target.value })} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-2.5 text-xs resize-none" placeholder="Biografía" rows="3" />
               <button type="submit" className="w-full bg-[#7c5cff] text-white font-bold py-2.5 rounded-xl text-xs">Guardar Perfil</button>
             </form>
           </div>
