@@ -85,15 +85,15 @@ export default function App(){
       return
     }
     supabase.auth.getSession().then(({data})=>setSession(data.session))
-    const {data:listener}=supabase.auth.onAuthStateChange(async(_,[STRIPPED]
-      setSession(sess)
-      if(sess?.user){
-        const {data:existing}=await supabase.from('profiles').select('*').eq('id', sess.user.id).single()
+    const {data:listener}=supabase.auth.onAuthStateChange(async (_event, newSession)=>{
+      setSession(newSession)
+      if(newSession?.user){
+        const {data:existing}=await supabase.from('profiles').select('*').eq('id', newSession.user.id).single()
         if(!existing){
-          const isMaster=sess.user.email?.toLowerCase()==='ext3@elraizer.com'
-          const username=isMaster?MASTER_USER:(sess.user.email?.split('@')[0]||'Usuario')
+          const isMaster=newSession.user.email?.toLowerCase()==='ext3@elraizer.com'
+          const username=isMaster?MASTER_USER:(newSession.user.email?.split('@')[0]||'Usuario')
           const {data:newProf}=await supabase.from('profiles').insert({
-            id:sess.user.id, username, avatar_color:isMaster?'#ffb020':'#7c5cff',
+            id:newSession.user.id, username, avatar_color:isMaster?'#ffb020':'#7c5cff',
             role:isMaster?'admin':'user', chat_role:isMaster?'master':'nuevo',
             bio:isMaster?'Fundador':'', points:isMaster?999:0
           }).select().single()
@@ -257,7 +257,7 @@ export default function App(){
   const handleCheckout=async()=>{
     if(cart.length===0) return
     for(const item of cart){
-      const msg=`🛒 Nueva solicitud: ${profile?.username} quiere comprar ${item.product.title} por $${item.product.price} x${item.qty}. Email: ${session?.user?.email||email}`
+      const msg=`Nueva solicitud: ${profile?.username} quiere comprar ${item.product.title} por $${item.product.price} x${item.qty}. Email: ${session?.user?.email||email}`
       if(!isSupabaseConfigured){
         const key='elraizer_notifications_'+item.product.seller_id
         const notifs=JSON.parse(localStorage.getItem(key)||'[]')
@@ -267,7 +267,7 @@ export default function App(){
         await supabase.from('notifications').insert({user_id:item.product.seller_id, text:msg, icon:'🛒'})
       }
     }
-    setCart([]); localStorage.setItem('elraizer_cart','[]'); alert('Solicitud enviada al vendedor')
+    setCart([]); localStorage.setItem('elraizer_cart','[]'); alert('Solicitud enviada')
   }
 
   const handleRenew=(p:Product)=>{
@@ -288,32 +288,31 @@ export default function App(){
     return (
       <div className="min-h-screen flex bg-[#0e1116] text-[#e9eef5]">
         <div className="flex-1 hidden md:flex flex-col justify-center p-12 bg-gradient-to-br from-[#161b23] to-[#0e1116] border-r border-[#2a323d]">
-          <h1 className="text-4xl font-black mb-4">◈ ELR · Elraizer Community Spa Global</h1>
-          <p className="text-[#8b97a8] mb-8">Comunidad premium y Marketplace global</p>
-          <ul className="space-y-3 text-sm"><li>💬 Chat en vivo moderado</li><li>🛍️ Marketplace 30 días auto-delete</li><li>⭐ Rangos y gamificación</li><li>🛡️ Panel maestro stealth</li></ul>
+          <h1 className="text-4xl font-black mb-4">◈ Elraizer Spa Global</h1>
+          <p className="text-[#8b97a8] mb-8">Comunidad premium y Marketplace</p>
+          <ul className="space-y-3 text-sm"><li>Chat moderado</li><li>Marketplace 30 días</li><li>Rangos y puntos</li><li>Panel maestro stealth</li></ul>
         </div>
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="w-full max-w-[420px] bg-[#161b23] border border-[#2a323d] rounded-[20px] p-8 shadow-2xl">
             <h2 className="text-2xl font-bold mb-2">Elraizer Community</h2>
-            <p className="text-sm text-[#8b97a8] mb-6">Acceso con email - sin Google</p>
+            <p className="text-sm text-[#8b97a8] mb-6">Acceso con email sin Google</p>
             <div className="flex gap-2 mb-6">
               <button onClick={()=>setAuthMode('login')} className={`flex-1 py-2 rounded-lg text-sm font-semibold ${authMode==='login'?'bg-[#7c5cff] text-white':'bg-[#1d242e] text-[#8b97a8]'}`}>Login</button>
               <button onClick={()=>setAuthMode('register')} className={`flex-1 py-2 rounded-lg text-sm font-semibold ${authMode==='register'?'bg-[#7c5cff] text-white':'bg-[#1d242e] text-[#8b97a8]'}`}>Registro</button>
             </div>
             {!onboarding ? (
               <>
-                <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" className="w-full mb-3 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-                <input value={pass} onChange={e=>setPass(e.target.value)} type="password" placeholder="Contraseña" className="w-full mb-4 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
+                <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" className="w-full mb-3 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none" />
+                <input value={pass} onChange={e=>setPass(e.target.value)} type="password" placeholder="Contraseña" className="w-full mb-4 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none" />
                 <button onClick={handleAuth} className="w-full py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold">{authMode==='login'?'Entrar':'Continuar'}</button>
-                <p className="mt-4 text-[11px] text-[#8b97a8] text-center">Maestro: Ext3@elraizer.com / Elraizer5374e* entra directo</p>
               </>
             ):(
               <div className="space-y-4">
-                <h3 className="font-bold">Configura perfil</h3>
+                <h3 className="font-bold">Perfil</h3>
                 <input value={obUsername} onChange={e=>setObUsername(e.target.value)} placeholder="Username min 3" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
                 <div className="flex gap-2 flex-wrap">{COLORS.map(c=><button key={c} onClick={()=>setObColor(c)} className="w-8 h-8 rounded-full border-2" style={{background:c, borderColor:obColor===c?'white':'transparent'}} />)}</div>
-                <input value={obBio} onChange={e=>setObBio(e.target.value)} maxLength={80} placeholder="Bio opcional" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
-                <button onClick={handleAuth} className="w-full py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold">Crear cuenta 🚀</button>
+                <input value={obBio} onChange={e=>setObBio(e.target.value)} placeholder="Bio opcional" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
+                <button onClick={handleAuth} className="w-full py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold">Crear cuenta</button>
                 <button onClick={()=>setOnboarding(false)} className="w-full text-xs text-[#8b97a8]">Volver</button>
               </div>
             )}
@@ -327,43 +326,52 @@ export default function App(){
     <div className="min-h-screen bg-[#0e1116] text-[#e9eef5]">
       <header className="sticky top-0 z-30 backdrop-blur-xl border-b bg-[#161b23]/80" style={{borderColor:'#2a323d'}}>
         <div className="max-w-[1080px] mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3"><button onClick={handleLogo} className="font-black text-lg tracking-tight">◈ Elraizer Community Spa Global</button>{profile?.chat_role==='master' && <span className="opacity-30 hover:opacity-100 transition cursor-pointer text-[#ffb020]" onClick={()=>setShowMaster(true)}>👑</span>}</div>
-          <div className="hidden md:flex flex-1 max-w-md mx-6"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." className="w-full px-4 py-2 rounded-xl bg-[#1d242e] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" /></div>
-          <div className="flex items-center gap-2"><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} className="w-9 h-9 rounded-xl bg-[#1d242e] border border-[#2a323d]">🌓</button><div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow" style={{background:profile?.avatar_color}}>{profile?.username?.[0]}</div><button onClick={handleLogout} className="text-xs ml-2 px-3 py-1 rounded-lg bg-[#1d242e] border border-[#2a323d]">Salir</button></div>
+          <div className="flex items-center gap-3"><button onClick={handleLogo} className="font-black text-lg">◈ Elraizer Spa Global</button>{profile?.chat_role==='master' && <span className="opacity-30 hover:opacity-100 cursor-pointer text-[#ffb020]" onClick={()=>setShowMaster(true)}>👑</span>}</div>
+          <div className="hidden md:flex flex-1 max-w-md mx-6"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." className="w-full px-4 py-2 rounded-xl bg-[#1d242e] border border-[#2a323d] text-sm outline-none" /></div>
+          <div className="flex items-center gap-2"><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} className="w-9 h-9 rounded-xl bg-[#1d242e] border border-[#2a323d]">🌓</button><div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{background:profile?.avatar_color}}>{profile?.username?.[0]}</div><button onClick={handleLogout} className="text-xs ml-2 px-3 py-1 rounded-lg bg-[#1d242e] border border-[#2a323d]">Salir</button></div>
         </div>
       </header>
       <div className="sticky top-14 z-20 backdrop-blur border-b bg-[#161b23]/80" style={{borderColor:'#2a323d'}}>
-        <div className="max-w-[1080px] mx-auto px-2 flex gap-1 overflow-x-auto">
-          {[{id:'inicio',label:'🏠 Inicio'},{id:'tienda',label:'🛍️ Tienda'},{id:'perfil',label:'👤 Perfil'},{id:'carrito',label:`🛒 Carrito (${cart.length})`}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-3 text-sm font-semibold whitespace-nowrap border-b-2 transition ${tab===t.id?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8] hover:text-white'}`}>{t.label}</button>)}
+        <div className="max-w-[1080px] mx-auto px-2 flex gap-1">
+          {[{id:'inicio',label:'🏠 Inicio'},{id:'tienda',label:'🛍️ Tienda'},{id:'perfil',label:'👤 Perfil'},{id:'carrito',label:`🛒 Carrito (${cart.length})`}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-3 text-sm font-semibold border-b-2 ${tab===t.id?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>{t.label}</button>)}
         </div>
       </div>
       <main className="max-w-[1080px] mx-auto p-4">
         {tab==='inicio' && (
           <div className="space-y-4">
-            <div className="p-4 rounded-[20px] bg-[#161b23] border border-[#2a323d] shadow-xl">
-              <div className="flex gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold" style={{background:profile?.avatar_color}}>{profile?.username?.[0]}</div><textarea value={newPost} onChange={e=>setNewPost(e.target.value)} placeholder="¿Qué piensas? #comunidad" className="flex-1 min-h-[60px] bg-[#0e1116] border border-[#2a323d] rounded-xl p-3 text-sm outline-none resize-none focus:border-[#7c5cff]" /></div>
-              {attachments.length>0 && <div className="mt-3 flex gap-2 flex-wrap">{attachments.map((a,i)=><div key={i} className="relative"><img src={a.url} className="w-20 h-20 object-cover rounded-lg" /><button onClick={()=>setAttachments(attachments.filter((_,j)=>j!==i))} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs">✕</button></div>)}</div>}
-              <div className="mt-3 flex justify-between"><button onClick={()=>fileInputRef.current?.click()} className="px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d] text-xs hover:border-[#7c5cff]">🖼️ Media</button><input ref={fileInputRef} type="file" multiple hidden onChange={e=>{ const files=Array.from((e.target as any).files||[]); files.forEach((f:any)=>{ const url=URL.createObjectURL(f); setAttachments(a=>[...a,{name:f.name, url}]) }) }} /><button onClick={handlePublish} className="px-6 py-2 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold text-sm shadow-lg">Publicar</button></div>
+            <div className="p-4 rounded-[20px] bg-[#161b23] border border-[#2a323d]">
+              <div className="flex gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold" style={{background:profile?.avatar_color}}>{profile?.username?.[0]}</div><textarea value={newPost} onChange={e=>setNewPost(e.target.value)} placeholder="¿Qué piensas?" className="flex-1 min-h-[60px] bg-[#0e1116] border border-[#2a323d] rounded-xl p-3 text-sm outline-none resize-none" /></div>
+              <div className="mt-3 flex justify-between"><button onClick={()=>fileInputRef.current?.click()} className="px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d] text-xs">🖼️</button><input ref={fileInputRef} type="file" multiple hidden onChange={e=>{ const files=Array.from((e.target as any).files||[]); files.forEach((f:any)=>{ const url=URL.createObjectURL(f); setAttachments(a=>[...a,{name:f.name, url}]) }) }} /><button onClick={handlePublish} className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold text-sm">Publicar</button></div>
             </div>
             {filteredPosts.map(p=>(
-              <div key={p.id} className="p-5 rounded-[20px] bg-[#161b23] border border-[#2a323d] hover:border-[#7c5cff]/30 transition shadow-lg">
-                <div className="flex gap-3"><div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{background:p.author?.avatar_color||'#7c5cff'}}>{p.author?.username?.[0]}</div><div className="flex-1"><div className="flex gap-2 items-center"><span className="font-bold text-sm">{p.author?.username}</span><span className="text-[11px] text-[#8b97a8]">{new Date(p.created_at).toLocaleTimeString()}</span></div><p className="mt-2 text-[14px] leading-relaxed">{p.text}</p>{p.media?.length>0 && <div className="mt-3 grid grid-cols-2 gap-2">{p.media.map((m:any,i:number)=><img key={i} src={m.url} className="rounded-xl max-h-60 object-cover" />)}</div>}</div></div>
+              <div key={p.id} className="p-4 rounded-[20px] bg-[#161b23] border border-[#2a323d]">
+                <div className="flex gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold" style={{background:p.author?.avatar_color||'#7c5cff'}}>{p.author?.username?.[0]}</div><div className="flex-1"><div className="flex gap-2 items-center"><span className="font-bold text-sm">{p.author?.username}</span><span className="text-[11px] text-[#8b97a8]">{new Date(p.created_at).toLocaleTimeString()}</span></div><p className="mt-2 text-sm">{p.text}</p></div></div>
               </div>
             ))}
-            {filteredPosts.length===0 && <div className="py-20 text-center text-[#8b97a8]"><div className="text-5xl mb-3">💬</div>Sin posts, sé el primero</div>}
           </div>
         )}
         {tab==='tienda' && (
-          <div className="space-y-5">
-            <div className="flex justify-between items-center"><h1 className="text-2xl font-black tracking-tight">Tienda Global · {filteredProducts.length}</h1><button onClick={()=>setProdModal(true)} className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white text-sm font-bold shadow-lg">＋ Publicar</button></div>
-            <div className="flex gap-2 overflow-x-auto pb-2">{CATEGORIES.map(c=><button key={c} onClick={()=>setSearch(c)} className={`px-3 py-1.5 rounded-full border text-xs whitespace-nowrap transition ${search===c?'bg-[#7c5cff] text-white border-[#7c5cff]':'bg-[#1d242e] border-[#2a323d] text-[#8b97a8] hover:border-[#7c5cff]'}`}>{c}</button>)}</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="space-y-4">
+            <div className="flex justify-between items-center"><h1 className="text-xl font-bold">Tienda · {filteredProducts.length}</h1><button onClick={()=>setProdModal(true)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white text-sm font-bold">＋ Publicar</button></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredProducts.map(p=>{
-                const left=daysLeft(p.expires_at); const exp=left<=5
+                const left=daysLeft(p.expires_at)
                 return (
-                  <div key={p.id} className="rounded-[20px] bg-[#161b23] border border-[#2a323d] overflow-hidden hover:border-[#7c5cff]/50 transition shadow-xl group">
-                    <div className="relative h-52 bg-[#0e1116] overflow-hidden">{p.images?.[0]?<img src={p.images[0].url} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />:<div className="w-full h-full flex items-center justify-center text-4xl">🛍️</div>}{exp && <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-[#ffb020] text-black text-[10px] font-black shadow">Por vencer · {left}d</span>}<span className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-[#0e1116]/90 backdrop-blur text-[10px] border border-[#2a323d]">{p.category}</span>}</div>
-                    <div className="p-4"><h3 className="font-bold text-sm line-clamp-1">{p.title}</h3><p className="text-[#00d4b1] font-black text-lg">${p.price.toLocaleString()} COP</p><p className="text-[11px] text-[#8b97a8] mt-1">Expira en {left} días · {p.location||'Colombia'}</p><div className="mt-4 flex gap-2"><button onClick={()=>handleAddToCart(p)} className="flex-1 py-2.5 rounded-xl bg-[#1d242e] border border-[#2a323d] text-xs font-semibold hover:border-[#7c5cff] transition">🛒 Agregar</button><button onClick={()=>handleRenew(p)} className="px-3 py-2.5 rounded-xl bg-[#7c5cff] text-white text-xs">🔄</button></div></div>
+                  <div key={p.id} className="rounded-[20px] bg-[#161b23] border border-[#2a323d] overflow-hidden">
+                    <div className="relative h-48 bg-[#0e1116]">
+                      {p.images?.[0]?<img src={p.images[0].url} className="w-full h-full object-cover" />:<div className="w-full h-full flex items-center justify-center text-3xl">🛍️</div>}
+                      {left<=5 && <span className="absolute top-2 left-2 px-2 py-1 rounded-full bg-[#ffb020] text-black text-[10px] font-bold">Por vencer {left}d</span>}
+                      <span className="absolute top-2 right-2 px-2 py-1 rounded-full bg-[#0e1116]/80 text-[10px]">{p.category}</span>
+                    </div>
+                    <div className="p-3">
+                      <h3 className="font-bold text-sm">{p.title}</h3>
+                      <p className="text-[#00d4b1] font-black">${p.price.toLocaleString()} COP</p>
+                      <p className="text-[11px] text-[#8b97a8]">Expira en {left} días</p>
+                      <div className="mt-3 flex gap-2">
+                        <button onClick={()=>handleAddToCart(p)} className="flex-1 py-2 rounded-xl bg-[#1d242e] border border-[#2a323d] text-xs">🛒 Agregar</button>
+                        <button onClick={()=>handleRenew(p)} className="px-3 py-2 rounded-xl bg-[#7c5cff] text-white text-xs">🔄</button>
+                      </div>
+                    </div>
                   </div>
                 )
               })}
@@ -371,46 +379,40 @@ export default function App(){
           </div>
         )}
         {tab==='perfil' && profile && (
-          <div className="p-8 rounded-[20px] bg-[#161b23] border border-[#2a323d] shadow-xl"><div className="flex gap-5"><div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-black text-white shadow-xl" style={{background:profile.avatar_color}}>{profile.username[0]}</div><div><h2 className="text-2xl font-black flex gap-2 items-center">{profile.username} {profile.chat_role==='master' && <span className="text-[#ffb020] opacity-60">👑</span>}</h2><p className="text-sm text-[#8b97a8] mt-1">{profile.bio||'Miembro Elraizer Community Spa Global'}</p><p className="text-sm mt-3 font-bold">⭐ {profile.points} puntos</p></div></div></div>
+          <div className="p-6 rounded-[20px] bg-[#161b23] border border-[#2a323d]">
+            <div className="flex gap-4"><div className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-black text-white" style={{background:profile.avatar_color}}>{profile.username[0]}</div><div><h2 className="text-xl font-bold">{profile.username}</h2><p className="text-sm text-[#8b97a8]">{profile.bio||'Miembro'}</p><p className="text-xs mt-2">⭐ {profile.points} puntos</p></div></div>
+          </div>
         )}
         {tab==='carrito' && (
-          <div className="space-y-4"><h1 className="text-2xl font-black">Carrito · {cart.length}</h1>{cart.map(c=><div key={c.product.id} className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d] flex justify-between items-center"><div><p className="font-bold text-sm">{c.product.title}</p><p className="text-xs text-[#8b97a8]">x{c.qty} · ${c.product.price.toLocaleString()}</p></div><button onClick={()=>setCart(cart.filter(x=>x.product.id!==c.product.id))} className="text-xs px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d]">Quitar</button></div>)}{cart.length>0 && <div className="p-5 rounded-[20px] bg-[#161b23] border border-[#2a323d] shadow-xl"><p className="font-black text-lg">Total: ${cart.reduce((s,c)=>s+c.product.price*c.qty,0).toLocaleString()} COP</p><p className="text-[11px] text-[#8b97a8] mt-1">Al finalizar se enviará mensaje automático al vendedor para coordinar pago directo</p><button onClick={handleCheckout} className="mt-4 w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black shadow-lg">Finalizar y contactar vendedores</button></div>}{cart.length===0 && <div className="py-20 text-center text-[#8b97a8]"><div className="text-5xl mb-3">🛒</div>Carrito vacío</div>}</div>
+          <div className="space-y-4">
+            <h1 className="text-xl font-bold">Carrito {cart.length}</h1>
+            {cart.map(c=><div key={c.product.id} className="p-3 rounded-xl bg-[#161b23] border border-[#2a323d] flex justify-between"><div><p className="font-bold text-sm">{c.product.title}</p><p className="text-xs text-[#8b97a8]">x{c.qty} ${c.product.price}</p></div><button onClick={()=>setCart(cart.filter(x=>x.product.id!==c.product.id))} className="text-xs px-3 py-1 rounded-lg bg-[#1d242e] border border-[#2a323d]">Quitar</button></div>)}
+            {cart.length>0 && <div className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d]"><p className="font-bold">Total ${cart.reduce((s,c)=>s+c.product.price*c.qty,0).toLocaleString()}</p><button onClick={handleCheckout} className="mt-3 w-full py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold">Finalizar</button></div>}
+          </div>
         )}
       </main>
 
       {prodModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center p-4">
-          <div className="w-full max-w-lg max-h-[90vh] overflow-auto rounded-[24px] bg-[#161b23] border border-[#2a323d] p-6 shadow-2xl">
-            <div className="flex justify-between mb-5"><h2 className="font-black text-lg">Publicar producto PRO</h2><button onClick={()=>setProdModal(false)} className="w-8 h-8 rounded-full bg-[#1d242e] border border-[#2a323d]">✕</button></div>
-            <div className="space-y-4">
-              <input value={prodForm.title} onChange={e=>setProdForm({...prodForm, title:e.target.value})} placeholder="Título max 80" maxLength={80} className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-              <div className="flex gap-2"><input value={prodForm.price} onChange={e=>setProdForm({...prodForm, price:e.target.value})} type="number" placeholder="Precio COP" className="flex-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" /><select value={prodForm.category} onChange={e=>setProdForm({...prodForm, category:e.target.value})} className="px-3 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none">{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
-              <textarea value={prodForm.description} onChange={e=>setProdForm({...prodForm, description:e.target.value})} placeholder="Descripción rica" className="w-full min-h-[90px] px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-              <input value={prodForm.location} onChange={e=>setProdForm({...prodForm, location:e.target.value})} placeholder="Ubicación ej: Armenia, Quindío" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-              <div className="p-4 rounded-xl bg-[#0e1116] border border-dashed border-[#2a323d]"><p className="text-xs text-[#8b97a8] mb-3">Fotos hasta 5 - primera es portada</p><div className="flex gap-2 flex-wrap">{prodForm.images.map((img:any,i:number)=><div key={i} className="relative"><img src={img.url} className="w-16 h-16 object-cover rounded-xl border border-[#2a323d]" /><button onClick={()=>setProdForm({...prodForm, images:prodForm.images.filter((_:any,j:number)=>j!==i)})} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[10px]">✕</button></div>)}</div><button onClick={()=>prodFileRef.current?.click()} className="mt-3 px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d] text-xs">＋ Añadir fotos</button><input ref={prodFileRef} type="file" multiple accept="image/*" hidden onChange={handleProdFiles} /></div>
-              <label className="flex gap-2 text-[11px] text-[#8b97a8]"><input type="checkbox" defaultChecked /> Acepto 30 días auto-delete, renovable</label>
-              <button onClick={handlePublishProduct} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black shadow-lg">Publicar producto 🚀</button>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur flex items-center justify-center p-4">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-auto rounded-[20px] bg-[#161b23] border border-[#2a323d] p-6">
+            <div className="flex justify-between mb-4"><h2 className="font-bold">Publicar producto</h2><button onClick={()=>setProdModal(false)} className="w-8 h-8 rounded-full bg-[#1d242e]">✕</button></div>
+            <div className="space-y-3">
+              <input value={prodForm.title} onChange={e=>setProdForm({...prodForm, title:e.target.value})} placeholder="Titulo" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
+              <div className="flex gap-2"><input value={prodForm.price} onChange={e=>setProdForm({...prodForm, price:e.target.value})} type="number" placeholder="Precio COP" className="flex-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" /><select value={prodForm.category} onChange={e=>setProdForm({...prodForm, category:e.target.value})} className="px-3 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm">{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
+              <textarea value={prodForm.description} onChange={e=>setProdForm({...prodForm, description:e.target.value})} placeholder="Descripcion" className="w-full min-h-[80px] px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
+              <input value={prodForm.location} onChange={e=>setProdForm({...prodForm, location:e.target.value})} placeholder="Ubicacion" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
+              <div className="p-3 rounded-xl bg-[#0e1116] border border-dashed border-[#2a323d]"><p className="text-xs text-[#8b97a8] mb-2">Fotos hasta 5</p><div className="flex gap-2 flex-wrap">{prodForm.images.map((img:any,i:number)=><div key={i} className="relative"><img src={img.url} className="w-16 h-16 object-cover rounded-lg" /><button onClick={()=>setProdForm({...prodForm, images:prodForm.images.filter((_:any,j:number)=>j!==i)})} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px]">✕</button></div>)}</div><button onClick={()=>prodFileRef.current?.click()} className="mt-2 px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d] text-xs">Añadir fotos</button><input ref={prodFileRef} type="file" multiple accept="image/*" hidden onChange={handleProdFiles} /></div>
+              <button onClick={handlePublishProduct} className="w-full py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold">Publicar</button>
             </div>
           </div>
         </div>
       )}
 
       {showMaster && profile?.chat_role==='master' && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl max-h-[85vh] overflow-auto rounded-[24px] bg-[#161b23] border border-[#2a323d] p-7 shadow-2xl">
-            <div className="flex justify-between items-center mb-5"><h2 className="text-xl font-black">Panel Maestro Stealth - Spa Global</h2><button onClick={()=>setShowMaster(false)} className="w-8 h-8 rounded-full bg-[#1d242e] border border-[#2a323d]">✕</button></div>
-            <div className="flex gap-2 mb-5">
-              {[{id:'usuarios',label:'Usuarios'},{id:'contenido',label:'Contenido'},{id:'productos',label:'Vencidos'}].map(t=><button key={t.id} onClick={()=>setMasterTab(t.id)} className={`px-4 py-1.5 rounded-full text-xs border font-semibold transition ${masterTab===t.id?'bg-[#7c5cff] text-white border-[#7c5cff] shadow':'bg-[#1d242e] border-[#2a323d] text-[#8b97a8]'}`}>{t.label}</button>)}
-            </div>
-            {masterTab==='usuarios' && (
-              <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-[#ffb020]/10 border border-[#ffb020]/30 text-xs"><p className="font-black text-[#ffb020] mb-1">🔐 Credenciales Maestro (solo tú ves esto)</p><p>Email: Ext3@elraizer.com</p><p>Pass: Elraizer5374e*</p><p className="mt-2 text-[#8b97a8]">SQL: UPDATE profiles SET role='admin', chat_role='master' WHERE email='Ext3@elraizer.com'</p></div>
-                <div className="p-4 rounded-xl bg-[#0e1116] border border-[#2a323d] flex gap-3 items-center"><div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-black" style={{background:profile.avatar_color}}>{profile.username[0]}</div><div className="flex-1"><p className="font-black text-sm">{profile.username} · STEALTH MODE · intocable</p><p className="text-[11px] text-[#8b97a8]">Control total del sistema</p></div></div>
-                <p className="text-xs text-[#8b97a8]">Aquí en producción verás lista completa de usuarios con email, puntos, estado, acciones: dar puntos, cambiar rol, silenciar, expulsar, banear, suspender, eliminar definitiva, editar email/pass</p>
-              </div>
-            )}
-            {masterTab==='contenido' && <p className="text-xs text-[#8b97a8]">Eliminar posts, productos, comentarios, reseñas, mensajes con notificación al autor</p>}
-            {masterTab==='productos' && <div className="space-y-2">{products.filter(p=>daysLeft(p.expires_at)<=5).map(p=><div key={p.id} className="p-3 rounded-xl bg-[#0e1116] border border-[#2a323d] flex justify-between text-xs"><span>{p.title} · expira en {daysLeft(p.expires_at)}d</span><button onClick={()=>handleRenew(p)} className="px-3 py-1 rounded-lg bg-[#7c5cff] text-white font-bold">Renovar</button></div>)}{products.filter(p=>daysLeft(p.expires_at)<=5).length===0 && <p className="text-xs text-[#8b97a8]">Sin productos por vencer</p>}</div>}
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl max-h-[85vh] overflow-auto rounded-[20px] bg-[#161b23] border border-[#2a323d] p-6">
+            <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-black">Panel Maestro</h2><button onClick={()=>setShowMaster(false)} className="w-8 h-8 rounded-full bg-[#1d242e]">✕</button></div>
+            <p className="text-xs text-[#8b97a8]">Control total: EXT3 modo fantasma, sin rastro público</p>
           </div>
         </div>
       )}
