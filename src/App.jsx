@@ -48,7 +48,8 @@ const INITIAL_USERS = [
     points: 1250, 
     dailyPointsGiven: 0,
     joinedDate: 'Octubre 2024',
-    status: 'active',
+    status: 'active', // active, suspended, banned
+    isMuted: false,
     isOnline: true
   },
   { 
@@ -72,6 +73,7 @@ const INITIAL_USERS = [
     dailyPointsGiven: 0,
     joinedDate: 'Enero 2025',
     status: 'active',
+    isMuted: false,
     isOnline: true
   }
 ];
@@ -83,13 +85,13 @@ const INITIAL_POSTS = [
     author_name: 'EXT3', 
     author_color: '#ffb020', 
     author_chat_role: 'master', 
-    text: '¡Sí señor, bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y ahora con la nueva función de comentarios en los posts.', 
+    text: '¡Sí señor, bienvenidos oficialmente a Elraizer Community! 🚀 Control total del panel maestro implementado.', 
     tags: ['bienvenida', 'comunidad', 'anuncio'], 
     attachments: [], 
     votes: 42, 
     votedBy: [],
     comments: [
-      { id: 'c1', author_id: 'usr_demo1', author_name: 'DevUser', author_color: '#3b82f6', text: '¡Excelente actualización, felicidades Sí señor!', created_at: 'Hace 1 hora' }
+      { id: 'c1', author_id: 'usr_demo1', author_name: 'DevUser', author_color: '#3b82f6', text: '¡Excelente control maestro, Sí señor!', created_at: 'Hace 1 hora' }
     ],
     created_at: 'Hace 2 horas' 
   }
@@ -129,7 +131,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Estados robustos con persistencia segura en localStorage
+  // Estados con persistencia en localStorage
   const [users, setUsers] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_users');
@@ -164,7 +166,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('elraizer_chat');
       return saved ? JSON.parse(saved) : [
-        { id: 'm1', user_id: 'ext3-id', user_name: 'EXT3', chat_role: 'master', text: 'Chat global activo. Sí señor, mantengamos el respeto.', created_at: '12:00' }
+        { id: 'm1', user_id: 'ext3-id', user_name: 'EXT3', chat_role: 'master', text: 'Chat global activo. Sí señor, control maestro disponible.', created_at: '12:00' }
       ];
     } catch { return []; }
   });
@@ -197,7 +199,7 @@ export default function App() {
   const [showCartModal, setShowCartModal] = useState(false);
   const [showSellModal, setShowSellModal] = useState(false);
   
-  // Admin User Detail Modal State
+  // Panel Maestro: Modal Detallado de Control de Usuario
   const [adminModalUser, setAdminModalUser] = useState(null);
   const [adminEditEmail, setAdminEditEmail] = useState('');
   const [adminEditPassword, setAdminEditPassword] = useState('');
@@ -228,9 +230,7 @@ export default function App() {
   const postFileInputRef = useRef(null);
   const postVideoInputRef = useRef(null);
 
-  // Estado para controlar qué post tiene abierto el input de comentarios
   const [commentInputs, setCommentInputs] = useState({});
-
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
 
@@ -327,6 +327,11 @@ export default function App() {
   };
 
   const addToCart = (prod) => {
+    const seller = users.find(u => u.id === prod.seller_id);
+    if (seller && seller.status !== 'active') {
+      alert("Sí señor, este producto pertenece a un usuario suspendido/baneado y no está disponible para compra.");
+      return;
+    }
     const existing = cart.find(p => p.id === prod.id);
     if (existing) {
       updateCart(cart.map(p => p.id === prod.id ? { ...p, qty: p.qty + 1 } : p));
@@ -336,37 +341,37 @@ export default function App() {
     alert(`Sí señor, agregado al carrito: ${prod.title}`);
   };
 
-  // SOLUCIÓN DEFINITIVA Y PROFESIONAL DE PAGO Y MENSAJE DIRECTO AL VENDEDOR
+  // CHECKOUT Y MENSAJE DIRECTO AL VENDEDOR
   const handleSecureCheckout = () => {
     if (!currentUser || cart.length === 0) return;
+    if (currentUser.status !== 'active') return alert("Sí señor, tu cuenta no está activa para realizar compras.");
 
     const currentDms = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
     let addedDms = [...currentDms];
 
-    // Agrupar productos por vendedor (seller_id)
     const sellerMap = {};
     cart.forEach(item => {
       const sId = item.seller_id || 'ext3-id';
-      if (!sellerMap[sId]) {
-        sellerMap[sId] = [];
-      }
+      if (!sellerMap[sId]) sellerMap[sId] = [];
       sellerMap[sId].push(item);
     });
 
     let firstOtherSellerId = null;
 
-    // Enviar un DM automático a cada vendedor con los detalles exactos de la compra
     Object.keys(sellerMap).forEach(sellerId => {
-      if (sellerId === currentUser.id) return; // No enviarse DM a uno mismo
+      if (sellerId === currentUser.id) return;
+      if (!firstOtherSellerId) firstOtherSellerId = sellerId;
 
-      if (!firstOtherSellerId) {
-        firstOtherSellerId = sellerId;
-      }
-
-      const itemsListStr = sellerMap[sellerId].map(i => `• ${i.title} (Cant: ${i.qty}) - $${(i.price * i.qty).toFixed(2)} USD`).join('\n');
+      const itemsListStr = sellerMap[sellerId].map(i => `• ${i.title} (Cant: ${i.qty}) - $${(i.price * i.qty).toFixed(2)} USD`).join('
+');
       const totalSellerPrice = sellerMap[sellerId].reduce((sum, i) => sum + i.price * i.qty, 0).toFixed(2);
 
-      const dmMessageText = `¡Hola Sí señor! 👋 Acabo de realizar el "Pago Seguro" en el Marketplace de Elraizer Community por tus productos:\n\n${itemsListStr}\n\nTotal a coordinar: $${totalSellerPrice} USD.\nPor favor, confírmame los métodos de pago directos disponibles. ¡Quedo atento!`;
+      const dmMessageText = `¡Hola Sí señor! 👋 Acabo de realizar el "Pago Seguro" en el Marketplace de Elraizer Community por tus productos:
+
+${itemsListStr}
+
+Total a coordinar: $${totalSellerPrice} USD.
+Por favor, confírmame los métodos de pago directos disponibles. ¡Quedo atento!`;
 
       const newDm = {
         id: 'dm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -379,12 +384,10 @@ export default function App() {
       addedDms.push(newDm);
     });
 
-    // Actualizar DMs y vaciar carrito limpiamente (SIN ALERTAS MOLESTAS DE SIMULACIÓN)
     updateDms(addedDms);
     updateCart([]);
     setShowCartModal(false);
 
-    // Redirección profesional inmediata a mensajería directa con el vendedor
     if (firstOtherSellerId) {
       const targetUser = users.find(u => u.id === firstOtherSellerId);
       if (targetUser) {
@@ -393,8 +396,6 @@ export default function App() {
         return;
       }
     }
-
-    // Si compró sus propios productos o no hay otro vendedor
     setActiveTab('dm');
   };
 
@@ -403,7 +404,10 @@ export default function App() {
 
   const handleSendGlobalChat = (e) => {
     if (e) e.preventDefault();
-    if (!chatInput.trim() || !currentUser) return;
+    if (!currentUser || currentUser.status !== 'active') return alert("Sí señor, tu cuenta está suspendida o inactiva.");
+    if (currentUser.isMuted) return alert("Sí señor, estás silenciado (muted) por el administrador y no puedes enviar mensajes en el chat global.");
+    if (!chatInput.trim()) return;
+
     const newMsg = {
       id: 'm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       user_id: currentUser.id,
@@ -419,7 +423,9 @@ export default function App() {
 
   const handleSendDm = (e) => {
     if (e) e.preventDefault();
-    if (!dmInput.trim() || !currentUser || !activeDmUser) return;
+    if (!currentUser || currentUser.status !== 'active') return alert("Sí señor, tu cuenta no está activa.");
+    if (!dmInput.trim() || !activeDmUser) return;
+
     const dm = {
       id: 'dm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       sender_id: currentUser.id,
@@ -433,11 +439,12 @@ export default function App() {
     setDmInput('');
   };
 
-  // NUEVA FUNCIONALIDAD: Comentar publicaciones del Feed
+  // Comentarios en posts
   const handleAddComment = (postId, e) => {
     if (e) e.preventDefault();
+    if (!currentUser || currentUser.status !== 'active') return alert("Sí señor, cuenta suspendida o inactiva.");
     const commentText = (commentInputs[postId] || '').trim();
-    if (!commentText || !currentUser) return;
+    if (!commentText) return;
 
     const newComment = {
       id: 'c_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
@@ -464,7 +471,7 @@ export default function App() {
   };
 
   const handleVotePost = (postId) => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.status !== 'active') return;
     const targetPost = posts.find(p => p.id === postId);
     if (!targetPost) return;
     if (targetPost.author_id === currentUser.id) return alert("Sí señor, no puedes darle like a tu propio post.");
@@ -491,7 +498,7 @@ export default function App() {
   };
 
   const handleDonatePoints = (postId, authorId) => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.status !== 'active') return;
     if (currentUser.id === authorId) return alert("Sí señor, no puedes donarte puntos a ti mismo.");
     if ((currentUser.points || 0) < 5) return alert("Sí señor, no tienes suficientes puntos. Necesitas al menos 5 pts para donar.");
     
@@ -524,15 +531,17 @@ export default function App() {
     alert('Sí señor, perfil actualizado con éxito.');
   };
 
-  const handleAdminUserAction = (userId, newStatus, newRole) => {
+  // CONTROL TOTAL MAESTRO: ACCIONES DE MODERACIÓN
+  const handleAdminUserAction = (userId, newStatus, newRole, isMutedVal) => {
     if (currentUser?.role !== 'admin') return;
     const currentUsers = JSON.parse(localStorage.getItem('elraizer_users') || '[]');
     const updatedList = currentUsers.map(u => {
       if (u.id === userId) {
         return {
           ...u,
-          ...(newStatus ? { status: newStatus } : {}),
-          ...(newRole ? { chat_role: newRole } : {})
+          ...(newStatus !== undefined ? { status: newStatus } : {}),
+          ...(newRole !== undefined ? { chat_role: newRole } : {}),
+          ...(isMutedVal !== undefined ? { isMuted: isMutedVal } : {})
         };
       }
       return u;
@@ -572,6 +581,27 @@ export default function App() {
     updatePostsList(currentPosts.filter(p => p.id !== postId));
   };
 
+  const handleAdminDeleteComment = (postId, commentId) => {
+    if (!window.confirm("¿Sí señor, deseas eliminar este comentario?")) return;
+    const currentPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
+    const updatedPosts = currentPosts.map(p => {
+      if (p.id === postId) {
+        return {
+          ...p,
+          comments: (p.comments || []).filter(c => c.id !== commentId)
+        };
+      }
+      return p;
+    });
+    updatePostsList(updatedPosts);
+  };
+
+  const handleAdminDeleteProduct = (prodId) => {
+    if (!window.confirm("¿Sí señor, deseas eliminar este producto del marketplace?")) return;
+    const currentProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
+    updateProductsList(currentProds.filter(p => p.id !== prodId));
+  };
+
   const compressImage = (file, callback) => {
     const img = new Image();
     img.onload = () => {
@@ -609,6 +639,7 @@ export default function App() {
 
   const executePublishProduct = (e) => {
     if (e) e.preventDefault();
+    if (!currentUser || currentUser.status !== 'active') return alert("Sí señor, tu cuenta está suspendida o inactiva.");
     if (!newProdTitle.trim() || !newProdPrice || !newProdDescription.trim()) {
       alert('Sí señor, por favor completa todos los campos requeridos: Título, Precio y Descripción.');
       return;
@@ -620,8 +651,8 @@ export default function App() {
     const newProduct = {
       id: 'prod_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       title: newProdTitle.trim(), description: newProdDescription.trim(), price: parseFloat(newProdPrice) || 0,
-      category: newProdCategory, seller_id: currentUser ? currentUser.id : 'ext3-id',
-      seller_name: currentUser ? currentUser.username : 'EXT3', seller_color: currentUser ? currentUser.avatar_color : '#ffb020',
+      category: newProdCategory, seller_id: currentUser.id,
+      seller_name: currentUser.username, seller_color: currentUser.avatar_color,
       image: finalImage, rating: 5.0, sales: 0, createdAt: new Date().toISOString(), expiresAt: getFutureDateString(30)
     };
     const currentProds = JSON.parse(localStorage.getItem('elraizer_products') || '[]');
@@ -632,6 +663,7 @@ export default function App() {
 
   const handleCreatePost = (e) => {
     if (e) e.preventDefault();
+    if (!currentUser || currentUser.status !== 'active') return alert("Sí señor, tu cuenta está suspendida o inactiva.");
     if (!newPostText.trim() && postAttachments.length === 0) {
       alert('Sí señor, escribe un texto o adjunta una imagen/archivo para publicar.');
       return;
@@ -685,7 +717,7 @@ export default function App() {
     const found = currentUsersList.find(u => u.email.toLowerCase() === inputClean || u.username.toLowerCase() === inputClean);
 
     if (found) {
-      if (found.status === 'suspended') return setAuthError('Esta cuenta ha sido suspendida temporalmente.');
+      if (found.status === 'suspended') return setAuthError('Esta cuenta ha sido suspendida temporalmente por el Administrador.');
       if (found.status === 'banned') return setAuthError('Esta cuenta ha sido BANEADA permanentemente.');
       if (found.password && found.password !== password) return setAuthError('Contraseña incorrecta.');
       const loggedUser = { ...found, isOnline: true };
@@ -712,7 +744,7 @@ export default function App() {
       fullName: uname, headline: 'Nuevo Miembro', bio: '¡Sí señor, me he unido a Elraizer Community!', location: 'Colombia',
       website: '', github: '', twitter: '', avatar_url: '', banner_url: '',
       avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-      role: 'user', chat_role: 'nuevo', points: 10, dailyPointsGiven: 0, joinedDate: 'Reciente', status: 'active', isOnline: true
+      role: 'user', chat_role: 'nuevo', points: 10, dailyPointsGiven: 0, joinedDate: 'Reciente', status: 'active', isMuted: false, isOnline: true
     };
     updateUsersList([...users, newUser]);
     setCurrentUser(newUser);
@@ -746,7 +778,7 @@ export default function App() {
         <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-[#161b23] border border-[#2a323d] p-8 rounded-2xl shadow-2xl">
           <div className="flex flex-col justify-center space-y-4">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">Sí señor - Elraizer Community</h1>
-            <p className="text-[#8b97a8]">Comunidad, Marketplace con Pago Seguro Directo, Comentarios en Posts y Panel Maestro.</p>
+            <p className="text-[#8b97a8]">Comunidad, Marketplace, Comentarios y Panel Maestro de Control Total.</p>
           </div>
           <div className="bg-[#1d242e] p-6 rounded-xl border border-[#2a323d] space-y-4">
             <div className="flex border-b border-[#2a323d] mb-4">
@@ -770,7 +802,7 @@ export default function App() {
       <header className="sticky top-0 z-40 bg-[#161b23]/90 backdrop-blur-md border-b border-[#2a323d] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="font-bold text-lg bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent flex items-center gap-2">
-            Sí señor - Elraizer Community
+            Sí señor - Elraizer Community Pro
           </div>
           <div className="hidden sm:flex items-center gap-1.5 bg-[#10b981]/10 border border-[#10b981]/30 px-3 py-1 rounded-full text-xs text-[#10b981] font-semibold">
             <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse" />
@@ -816,6 +848,12 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
+        {currentUser.status !== 'active' && (
+          <div className="bg-[#ff5470]/20 border border-[#ff5470] p-4 rounded-xl text-center text-[#ff5470] font-bold text-sm">
+            ⚠️ ¡Atención Sí señor! Tu cuenta se encuentra {currentUser.status.toUpperCase()}. Algunas funciones están limitadas.
+          </div>
+        )}
+
         {activeTab === 'feed' && (
           <div className="space-y-4">
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
@@ -882,7 +920,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* SECCIÓN DE COMENTARIOS EN EL POST */}
+                  {/* COMENTARIOS */}
                   <div className="border-t border-[#2a323d] pt-3 space-y-3">
                     <div className="flex items-center gap-2 text-xs font-semibold text-[#8b97a8]">
                       <MessageCircleReply size={14} className="text-[#00d4b1]" />
@@ -892,17 +930,24 @@ export default function App() {
                     {postComments.length > 0 && (
                       <div className="space-y-2 bg-[#11151c] p-3 rounded-xl border border-[#2a323d]">
                         {postComments.map(c => (
-                          <div key={c.id} className="flex items-start gap-2.5 border-b border-[#2a323d]/40 pb-2 last:border-b-0 last:pb-0">
-                            <div className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0" style={{ backgroundColor: c.author_color }}>
-                              {c.author_name[0]}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex justify-between items-center">
-                                <span className="font-bold text-xs text-white">@{c.author_name}</span>
-                                <span className="text-[9px] text-[#8b97a8]">{c.created_at}</span>
+                          <div key={c.id} className="flex items-start justify-between gap-2.5 border-b border-[#2a323d]/40 pb-2 last:border-b-0 last:pb-0">
+                            <div className="flex items-start gap-2.5">
+                              <div className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0" style={{ backgroundColor: c.author_color }}>
+                                {c.author_name[0]}
                               </div>
-                              <p className="text-xs text-[#e9eef5] mt-0.5">{c.text}</p>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-xs text-white">@{c.author_name}</span>
+                                  <span className="text-[9px] text-[#8b97a8]">{c.created_at}</span>
+                                </div>
+                                <p className="text-xs text-[#e9eef5] mt-0.5">{c.text}</p>
+                              </div>
                             </div>
+                            {currentUser.role === 'admin' && (
+                              <button onClick={() => handleAdminDeleteComment(p.id, c.id)} className="text-[#ff5470] hover:bg-[#ff5470]/20 p-1 rounded text-[10px]" title="Borrar comentario como Admin">
+                                <Trash2 size={12}/>
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -973,8 +1018,8 @@ export default function App() {
               <div ref={chatEndRef} />
             </div>
             <form onSubmit={handleSendGlobalChat} className="p-3 border-t border-[#2a323d] flex gap-2">
-              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff] text-white" placeholder="Escribe un mensaje, Sí señor..." />
-              <button type="submit" className="p-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white rounded-xl"><Send size={18}/></button>
+              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff] text-white" placeholder={currentUser.isMuted ? "Estás silenciado (muted)..." : "Escribe un mensaje, Sí señor..."} disabled={currentUser.isMuted} />
+              <button type="submit" className="p-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white rounded-xl disabled:opacity-50" disabled={currentUser.isMuted}><Send size={18}/></button>
             </form>
           </div>
         )}
@@ -1009,7 +1054,6 @@ export default function App() {
                          </button>
                        );
                     })}
-                    {filteredUsersForDm.length === 0 && <div className="p-4 text-center text-xs text-[#8b97a8]">No se encontraron usuarios.</div>}
                  </div>
               </div>
 
@@ -1080,11 +1124,12 @@ export default function App() {
           </div>
         )}
 
+        {/* PANEL MAESTRO DE CONTROL TOTAL */}
         {activeTab === 'master_panel' && currentUser.role === 'admin' && (
           <div className="space-y-6">
             <div className="bg-[#161b23] border border-[#ffb020]/40 p-6 rounded-2xl">
-              <h2 className="text-2xl font-bold text-[#ffb020] flex items-center gap-2">🛡️ Panel Maestro Extendido</h2>
-              <p className="text-xs text-[#8b97a8] mt-1">Supervisión, edición de credenciales (correo/password), puntajes y moderación de posts por usuario.</p>
+              <h2 className="text-2xl font-bold text-[#ffb020] flex items-center gap-2">🛡️ Panel Maestro - Control Total Absoluto</h2>
+              <p className="text-xs text-[#8b97a8] mt-1">Supervisa y controla absolutamente todo lo que hacen los usuarios: banear, suspender, silenciar (mute), editar credenciales, y revisar/eliminar sus productos en el marketplace, posts y comentarios.</p>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1097,13 +1142,17 @@ export default function App() {
                 <span className="text-2xl font-extrabold text-[#10b981]">{onlineUsersCount}</span>
               </div>
               <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl">
+                <span className="text-xs text-[#8b97a8] block">Total Productos (Market)</span>
+                <span className="text-2xl font-extrabold text-[#00d4b1]">{products.length}</span>
+              </div>
+              <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl">
                 <span className="text-xs text-[#8b97a8] block">Total Publicaciones</span>
                 <span className="text-2xl font-extrabold text-[#7c5cff]">{posts.length}</span>
               </div>
             </div>
 
             <div className="bg-[#161b23] border border-[#2a323d] rounded-2xl p-4 space-y-4">
-              <h3 className="font-bold text-sm text-white border-b border-[#2a323d] pb-2">Gestión de Cuentas ({users.length})</h3>
+              <h3 className="font-bold text-sm text-white border-b border-[#2a323d] pb-2">Control por Usuario ({users.length})</h3>
               
               <div className="space-y-3">
                 {users.map(u => (
@@ -1119,6 +1168,7 @@ export default function App() {
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${u.status === 'active' ? 'bg-[#10b981]/20 text-[#10b981]' : u.status === 'suspended' ? 'bg-[#ffb020]/20 text-[#ffb020]' : 'bg-[#ff5470]/20 text-[#ff5470]'}`}>
                             {u.status.toUpperCase()}
                           </span>
+                          {u.isMuted && <span className="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-bold">MUTED</span>}
                         </div>
                         <p className="text-xs text-[#8b97a8]">{u.email} · Rol: <span className="text-[#00d4b1] font-semibold">{u.chat_role}</span></p>
                       </div>
@@ -1126,27 +1176,31 @@ export default function App() {
 
                     <div className="flex flex-wrap gap-2 text-xs">
                       <button onClick={() => openAdminDetailModal(u)} className="px-3 py-1.5 bg-[#7c5cff]/20 text-[#7c5cff] border border-[#7c5cff]/40 rounded-lg font-bold hover:bg-[#7c5cff]/30">
-                        <Edit3 size={14} className="inline mr-1"/> Detalles / Posts
+                        <Edit3 size={14} className="inline mr-1"/> Ver Actividad / Productos / Posts
                       </button>
 
                       {u.id !== currentUser.id && (
                         <>
-                          {u.status === 'active' ? (
-                            <button onClick={() => handleAdminUserAction(u.id, 'suspended')} className="px-3 py-1.5 bg-[#ffb020]/20 text-[#ffb020] border border-[#ffb020]/40 rounded-lg font-semibold hover:bg-[#ffb020]/30">Suspender</button>
-                          ) : (
-                            <button onClick={() => handleAdminUserAction(u.id, 'active')} className="px-3 py-1.5 bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40 rounded-lg font-semibold hover:bg-[#10b981]/30">Reactivar</button>
+                          {/* Estado de cuenta */}
+                          {u.status === 'active' && (
+                            <button onClick={() => handleAdminUserAction(u.id, 'suspended')} className="px-2.5 py-1.5 bg-[#ffb020]/20 text-[#ffb020] border border-[#ffb020]/40 rounded-lg font-semibold hover:bg-[#ffb020]/30">Suspender</button>
                           )}
-                          <select
-                            value={u.chat_role}
-                            onChange={(e) => handleAdminUserAction(u.id, null, e.target.value)}
-                            className="bg-[#161b23] border border-[#2a323d] rounded-lg px-2 py-1 text-xs text-white"
-                          >
-                            <option value="nuevo">Nuevo</option>
-                            <option value="miembro">Miembro</option>
-                            <option value="veterano">Veterano</option>
-                            <option value="moderador">Moderador</option>
-                            <option value="master">Master</option>
-                          </select>
+                          {u.status !== 'active' && (
+                            <button onClick={() => handleAdminUserAction(u.id, 'active')} className="px-2.5 py-1.5 bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40 rounded-lg font-semibold hover:bg-[#10b981]/30">Activar</button>
+                          )}
+                          
+                          {u.status !== 'banned' ? (
+                            <button onClick={() => handleAdminUserAction(u.id, 'banned')} className="px-2.5 py-1.5 bg-[#ff5470]/20 text-[#ff5470] border border-[#ff5470]/40 rounded-lg font-semibold hover:bg-[#ff5470]/30">Banear</button>
+                          ) : (
+                            <button onClick={() => handleAdminUserAction(u.id, 'active')} className="px-2.5 py-1.5 bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40 rounded-lg font-semibold">Desbanear</button>
+                          )}
+
+                          {/* Silenciar (Mute) / Desmutear */}
+                          {!u.isMuted ? (
+                            <button onClick={() => handleAdminUserAction(u.id, undefined, undefined, true)} className="px-2.5 py-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 rounded-lg font-semibold" title="Silenciar chat global">Silenciar</button>
+                          ) : (
+                            <button onClick={() => handleAdminUserAction(u.id, undefined, undefined, false)} className="px-2.5 py-1.5 bg-green-500/20 text-green-400 border border-green-500/40 rounded-lg font-semibold" title="Quitar silencio">Desmutear</button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1158,21 +1212,23 @@ export default function App() {
         )}
       </main>
 
+      {/* MODAL DE CONTROL TOTAL DE ACTIVIDAD POR USUARIO */}
       {adminModalUser && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#161b23] border border-[#ffb020]/50 text-[#e9eef5] rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+          <div className="bg-[#161b23] border border-[#ffb020]/50 text-[#e9eef5] rounded-2xl max-w-3xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
             <button type="button" onClick={() => setAdminModalUser(null)} className="absolute top-4 right-4 text-[#8b97a8] hover:text-white"><X size={20} /></button>
             <div className="flex items-center gap-3 border-b border-[#2a323d] pb-4 mb-4">
               <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg text-white" style={{ backgroundColor: adminModalUser.avatar_color }}>
                 {adminModalUser.username[0]}
               </div>
               <div>
-                <h3 className="font-bold text-lg text-white">@{adminModalUser.username}</h3>
-                <span className="text-xs text-[#8b97a8]">Gestión Avanzada de Cuenta</span>
+                <h3 className="font-bold text-lg text-white">Panel de Control: @{adminModalUser.username}</h3>
+                <span className="text-xs text-[#8b97a8]">Gestión total de productos, publicaciones y comentarios del usuario</span>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+              {/* Formulario de Credenciales y Puntos */}
               <form onSubmit={handleSaveAdminDetail} className="space-y-4 bg-[#1d242e] border border-[#2a323d] p-4 rounded-xl">
                 <h4 className="font-bold text-sm text-[#00d4b1] mb-2 flex items-center gap-1"><ShieldAlert size={16}/> Credenciales y Puntos</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1190,21 +1246,47 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <button type="submit" className="px-5 py-2 bg-[#ffb020] text-slate-950 font-extrabold text-xs rounded-xl shadow-md hover:bg-[#e09b19]">Guardar Cambios</button>
+                  <button type="submit" className="px-5 py-2 bg-[#ffb020] text-slate-950 font-extrabold text-xs rounded-xl shadow-md hover:bg-[#e09b19]">Guardar Credenciales</button>
                 </div>
               </form>
 
+              {/* PRODUCTOS EN MARKETPLACE DE ESTE USUARIO */}
               <div className="space-y-3">
-                <h4 className="font-bold text-sm text-white flex items-center gap-2"><MessageSquare size={16} className="text-[#7c5cff]" /> Publicaciones de este usuario</h4>
+                <h4 className="font-bold text-sm text-[#00d4b1] flex items-center gap-2"><Package size={16}/> Productos en Marketplace ({products.filter(p => p.seller_id === adminModalUser.id).length})</h4>
+                {products.filter(p => p.seller_id === adminModalUser.id).length === 0 ? (
+                  <p className="text-xs text-[#8b97a8] bg-[#1d242e] p-3 rounded-xl text-center border border-[#2a323d]">Este usuario no tiene productos publicados.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {products.filter(p => p.seller_id === adminModalUser.id).map(prod => (
+                      <div key={prod.id} className="bg-[#1d242e] border border-[#2a323d] p-3 rounded-xl flex flex-col justify-between space-y-2">
+                        <div className="flex items-center gap-2">
+                          <img src={prod.image} className="w-12 h-12 object-cover rounded-lg" />
+                          <div className="flex-1 overflow-hidden">
+                            <h5 className="font-bold text-xs text-white truncate">{prod.title}</h5>
+                            <span className="text-[10px] text-[#00d4b1]">${prod.price.toFixed(2)} USD</span>
+                          </div>
+                        </div>
+                        <button onClick={() => handleAdminDeleteProduct(prod.id)} className="w-full py-1.5 bg-[#ff5470]/20 hover:bg-[#ff5470]/30 text-[#ff5470] text-xs font-bold rounded-lg flex items-center justify-center gap-1">
+                          <Trash2 size={12}/> Eliminar Producto
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* PUBLICACIONES (POSTS) DE ESTE USUARIO */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-sm text-[#7c5cff] flex items-center gap-2"><MessageSquare size={16}/> Publicaciones en el Feed ({posts.filter(p => p.author_id === adminModalUser.id).length})</h4>
                 {posts.filter(p => p.author_id === adminModalUser.id).length === 0 ? (
-                  <p className="text-xs text-[#8b97a8] bg-[#1d242e] p-4 rounded-xl text-center border border-[#2a323d]">El usuario no tiene publicaciones.</p>
+                  <p className="text-xs text-[#8b97a8] bg-[#1d242e] p-3 rounded-xl text-center border border-[#2a323d]">El usuario no tiene publicaciones.</p>
                 ) : (
                   <div className="space-y-3">
                     {posts.filter(p => p.author_id === adminModalUser.id).map(p => (
                       <div key={p.id} className="bg-[#1d242e] border border-[#2a323d] p-3 rounded-xl flex flex-col gap-2">
                         <div className="flex justify-between items-start">
                           <span className="text-[10px] text-[#8b97a8]">{p.created_at}</span>
-                          <button onClick={() => handleAdminDeletePost(p.id)} className="text-[#ff5470] hover:bg-[#ff5470]/20 p-1 rounded-lg flex items-center gap-1 text-[10px] font-bold"><Trash2 size={12}/> Eliminar</button>
+                          <button onClick={() => handleAdminDeletePost(p.id)} className="text-[#ff5470] hover:bg-[#ff5470]/20 p-1 rounded-lg flex items-center gap-1 text-[10px] font-bold"><Trash2 size={12}/> Eliminar Post</button>
                         </div>
                         <p className="text-xs text-white line-clamp-3">{p.text}</p>
                       </div>
@@ -1212,6 +1294,42 @@ export default function App() {
                   </div>
                 )}
               </div>
+
+              {/* COMENTARIOS REALIZADOS POR ESTE USUARIO EN TODA LA PLATAFORMA */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-sm text-[#ffb020] flex items-center gap-2"><MessageCircleReply size={16}/> Comentarios realizados por el usuario</h4>
+                {(() => {
+                  let userComments = [];
+                  posts.forEach(p => {
+                    (p.comments || []).forEach(c => {
+                      if (c.author_id === adminModalUser.id) {
+                        userComments.push({ ...c, postId: p.id, postText: p.text });
+                      }
+                    });
+                  });
+
+                  if (userComments.length === 0) {
+                    return <p className="text-xs text-[#8b97a8] bg-[#1d242e] p-3 rounded-xl text-center border border-[#2a323d]">Este usuario no ha realizado comentarios.</p>;
+                  }
+
+                  return (
+                    <div className="space-y-2">
+                      {userComments.map(c => (
+                        <div key={c.id} className="bg-[#1d242e] border border-[#2a323d] p-3 rounded-xl flex justify-between items-start gap-3">
+                          <div>
+                            <span className="text-[10px] text-[#8b97a8] block">En post: "{c.postText.substring(0, 40)}..."</span>
+                            <p className="text-xs text-white mt-1">"{c.text}"</p>
+                          </div>
+                          <button onClick={() => handleAdminDeleteComment(c.postId, c.id)} className="text-[#ff5470] hover:bg-[#ff5470]/20 p-1.5 rounded-lg shrink-0 text-xs" title="Eliminar comentario">
+                            <Trash2 size={14}/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
             </div>
           </div>
         </div>
