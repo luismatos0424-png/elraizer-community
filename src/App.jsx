@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Shield, Corona, Moon, Sun, Bell, ShoppingCart, User, LogOut, MessageSquare,
+  Shield, Moon, Sun, ShoppingCart, User, LogOut, MessageSquare,
   Send, Plus, ThumbsUp, Star, Trash2, Pin, VolumeX, Ban, UserCheck, ShieldAlert,
   Search, ExternalLink, Image as ImageIcon, Video, Paperclip, Smile, Check, X, Tag, RefreshCw,
   ShoppingBag, Lock, UserX, AlertTriangle, ChevronRight, Award, MessageCircle, Mail,
   DollarSign, Package, CheckCircle2, Crown, Users, Settings, Activity, Camera,
   Edit3, Globe, Github, Twitter, Linkedin, Briefcase, MapPin, Calendar, Heart, Eye,
   Archive, Inbox, Send as SendIcon, FileText, CheckCheck, UserMinus, ShieldOff, Layers, Filter,
-  Wifi, Circle, Award as AwardIcon, Gift, Clock, Key, KeyRound, Upload, Link as LinkIcon, Sparkles, TrendingUp
+  Wifi, Circle, Award as AwardIcon, Gift, Clock, Key, KeyRound, Upload, Link as LinkIcon, Sparkles, TrendingUp, MessageSquarePlus, MessageCircleReply
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
@@ -83,11 +83,14 @@ const INITIAL_POSTS = [
     author_name: 'EXT3', 
     author_color: '#ffb020', 
     author_chat_role: 'master', 
-    text: '¡Bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y otorga puntos a los posts que más te gusten.', 
+    text: '¡Sí señor, bienvenidos oficialmente a Elraizer Community! 🚀 Explora el feed, participa en el chat global, comercia en el marketplace y ahora con la nueva función de comentarios en los posts.', 
     tags: ['bienvenida', 'comunidad', 'anuncio'], 
     attachments: [], 
     votes: 42, 
     votedBy: [],
+    comments: [
+      { id: 'c1', author_id: 'usr_demo1', author_name: 'DevUser', author_color: '#3b82f6', text: '¡Excelente actualización, felicidades Sí señor!', created_at: 'Hace 1 hora' }
+    ],
     created_at: 'Hace 2 horas' 
   }
 ];
@@ -126,7 +129,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Estados
+  // Estados robustos con persistencia segura en localStorage
   const [users, setUsers] = useState(() => {
     try {
       const saved = localStorage.getItem('elraizer_users');
@@ -161,7 +164,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('elraizer_chat');
       return saved ? JSON.parse(saved) : [
-        { id: 'm1', user_id: 'ext3-id', user_name: 'EXT3', chat_role: 'master', text: 'Chat global activo. Recuerden mantener el respeto.', created_at: '12:00' }
+        { id: 'm1', user_id: 'ext3-id', user_name: 'EXT3', chat_role: 'master', text: 'Chat global activo. Sí señor, mantengamos el respeto.', created_at: '12:00' }
       ];
     } catch { return []; }
   });
@@ -186,16 +189,14 @@ export default function App() {
   const [dmSearchQuery, setDmSearchQuery] = useState('');
 
   // Marketplace Filters
-  const [marketTab, setMarketTab] = useState('browse');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [marketSearchQuery, setMarketSearchQuery] = useState('');
   const [priceSort, setPriceSort] = useState('default');
 
-  // Modals & Profile Edit State
+  // Modals & States
   const [showCartModal, setShowCartModal] = useState(false);
   const [showSellModal, setShowSellModal] = useState(false);
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-
+  
   // Admin User Detail Modal State
   const [adminModalUser, setAdminModalUser] = useState(null);
   const [adminEditEmail, setAdminEditEmail] = useState('');
@@ -221,11 +222,14 @@ export default function App() {
   const [prodImagePreview, setProdImagePreview] = useState('');
   const prodFileInputRef = useRef(null);
 
-  // Inputs Feed/Chat
+  // Inputs Feed/Chat/Comentarios
   const [newPostText, setNewPostText] = useState('');
   const [postAttachments, setPostAttachments] = useState([]);
   const postFileInputRef = useRef(null);
   const postVideoInputRef = useRef(null);
+
+  // Estado para controlar qué post tiene abierto el input de comentarios
+  const [commentInputs, setCommentInputs] = useState({});
 
   const [chatInput, setChatInput] = useState('');
   const [dmInput, setDmInput] = useState('');
@@ -233,7 +237,7 @@ export default function App() {
   const chatEndRef = useRef(null);
   const dmEndRef = useRef(null);
 
-  // Sync
+  // Sync state across tabs safely
   useEffect(() => {
     const syncData = () => {
       try {
@@ -329,10 +333,10 @@ export default function App() {
     } else {
       updateCart([...cart, { ...prod, qty: 1 }]);
     }
-    alert(`Agregado al carrito: ${prod.title}`);
+    alert(`Sí señor, agregado al carrito: ${prod.title}`);
   };
 
-  // NUEVA FUNCIONALIDAD: Al proceder el pago seguro, envía DM automático a cada vendedor de los productos en el carrito
+  // SOLUCIÓN DEFINITIVA Y PROFESIONAL DE PAGO Y MENSAJE DIRECTO AL VENDEDOR
   const handleSecureCheckout = () => {
     if (!currentUser || cart.length === 0) return;
 
@@ -349,20 +353,20 @@ export default function App() {
       sellerMap[sId].push(item);
     });
 
-    // Enviar un DM automático a cada vendedor con los detalles de la compra
-    Object.keys(sellerMap).forEach(sellerId => {
-      // No enviarse DM a uno mismo si uno es el vendedor
-      if (sellerId === currentUser.id) return;
+    let firstOtherSellerId = null;
 
-      const itemsListStr = sellerMap[sellerId].map(i => `• ${i.title} (Cant: ${i.qty}) - $${(i.price * i.qty).toFixed(2)}`).join('
-');
+    // Enviar un DM automático a cada vendedor con los detalles exactos de la compra
+    Object.keys(sellerMap).forEach(sellerId => {
+      if (sellerId === currentUser.id) return; // No enviarse DM a uno mismo
+
+      if (!firstOtherSellerId) {
+        firstOtherSellerId = sellerId;
+      }
+
+      const itemsListStr = sellerMap[sellerId].map(i => `• ${i.title} (Cant: ${i.qty}) - $${(i.price * i.qty).toFixed(2)} USD`).join('\n');
       const totalSellerPrice = sellerMap[sellerId].reduce((sum, i) => sum + i.price * i.qty, 0).toFixed(2);
 
-      const dmMessageText = `¡Hola! 👋 Acabo de realizar el "Pago Seguro" en el Marketplace por tus productos:
-${itemsListStr}
-Total: $${totalSellerPrice} USD.
-
-Por favor, contáctame para coordinar los métodos de pago de manera directa contigo. ¡Quedo atento!`;
+      const dmMessageText = `¡Hola Sí señor! 👋 Acabo de realizar el "Pago Seguro" en el Marketplace de Elraizer Community por tus productos:\n\n${itemsListStr}\n\nTotal a coordinar: $${totalSellerPrice} USD.\nPor favor, confírmame los métodos de pago directos disponibles. ¡Quedo atento!`;
 
       const newDm = {
         id: 'dm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -375,21 +379,23 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
       addedDms.push(newDm);
     });
 
+    // Actualizar DMs y vaciar carrito limpiamente (SIN ALERTAS MOLESTAS DE SIMULACIÓN)
     updateDms(addedDms);
     updateCart([]);
     setShowCartModal(false);
-    
-    alert('¡Pedido de compra generado con éxito! Se ha enviado un mensaje directo a cada vendedor para coordinar el pago directo.');
-    
-    // Cambiar automáticamente a la pestaña de DMs si se compró a otro usuario
-    const firstOtherSeller = Object.keys(sellerMap).find(sId => sId !== currentUser.id);
-    if (firstOtherSeller) {
-      const targetUser = users.find(u => u.id === firstOtherSeller);
+
+    // Redirección profesional inmediata a mensajería directa con el vendedor
+    if (firstOtherSellerId) {
+      const targetUser = users.find(u => u.id === firstOtherSellerId);
       if (targetUser) {
         setActiveDmUser(targetUser);
         setActiveTab('dm');
+        return;
       }
     }
+
+    // Si compró sus propios productos o no hay otro vendedor
+    setActiveTab('dm');
   };
 
   const unreadTotalCount = currentUser ? directMessages.filter(m => m.receiver_id === currentUser.id && !m.read).length : 0;
@@ -425,6 +431,36 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
     const currentDms = JSON.parse(localStorage.getItem('elraizer_dms') || '[]');
     updateDms([...currentDms, dm]);
     setDmInput('');
+  };
+
+  // NUEVA FUNCIONALIDAD: Comentar publicaciones del Feed
+  const handleAddComment = (postId, e) => {
+    if (e) e.preventDefault();
+    const commentText = (commentInputs[postId] || '').trim();
+    if (!commentText || !currentUser) return;
+
+    const newComment = {
+      id: 'c_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      author_id: currentUser.id,
+      author_name: currentUser.username,
+      author_color: currentUser.avatar_color,
+      text: commentText,
+      created_at: 'Hace un momento'
+    };
+
+    const currentPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
+    const updatedPosts = currentPosts.map(p => {
+      if (p.id === postId) {
+        return {
+          ...p,
+          comments: [...(p.comments || []), newComment]
+        };
+      }
+      return p;
+    });
+
+    updatePostsList(updatedPosts);
+    setCommentInputs({ ...commentInputs, [postId]: '' });
   };
 
   const handleVotePost = (postId) => {
@@ -485,7 +521,6 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
     const updatedList = currentUsers.map(u => u.id === currentUser.id ? updatedUser : u);
     updateUsersList(updatedList);
     setCurrentUser(updatedUser);
-    setIsEditingProfile(false);
     alert('Sí señor, perfil actualizado con éxito.');
   };
 
@@ -605,7 +640,7 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
       id: 'p_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       author_id: currentUser.id, author_name: currentUser.username, author_color: currentUser.avatar_color,
       author_chat_role: currentUser.chat_role, text: newPostText.trim(), tags: ['comunidad'],
-      attachments: postAttachments, votes: 0, votedBy: [], created_at: 'Ahora mismo'
+      attachments: postAttachments, votes: 0, votedBy: [], comments: [], created_at: 'Ahora mismo'
     };
     const currentPosts = JSON.parse(localStorage.getItem('elraizer_posts') || '[]');
     updatePostsList([newPost, ...currentPosts]);
@@ -620,7 +655,7 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
           try {
             setPostAttachments(prev => [...prev, { id: 'att_' + Date.now() + Math.random(), name: file.name, type: 'image', url: dataUrl }]);
           } catch (err) {
-            alert('Sí señor, la imagen es demasiado pesada incluso tras compresión.');
+            alert('Sí señor, la imagen es demasiado pesada.');
           }
         });
       } else {
@@ -629,7 +664,7 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
           try {
             setPostAttachments(prev => [...prev, { id: 'att_' + Date.now() + Math.random(), name: file.name, type: fileType || 'file', url: reader.result }]);
           } catch(err) {
-             alert('Sí señor, archivo muy pesado para el almacenamiento local.');
+             alert('Sí señor, archivo muy pesado.');
           }
         };
         reader.readAsDataURL(file);
@@ -674,7 +709,7 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
     const uname = isEmail ? inputClean.split('@')[0] : identifier.trim();
     const newUser = {
       id: 'usr_' + Date.now(), email: isEmail ? inputClean : `${inputClean}@elraizer.com`, username: uname, password: password,
-      fullName: uname, headline: 'Nuevo Miembro', bio: '¡Hola! Me he unido a Elraizer Community.', location: 'Colombia',
+      fullName: uname, headline: 'Nuevo Miembro', bio: '¡Sí señor, me he unido a Elraizer Community!', location: 'Colombia',
       website: '', github: '', twitter: '', avatar_url: '', banner_url: '',
       avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
       role: 'user', chat_role: 'nuevo', points: 10, dailyPointsGiven: 0, joinedDate: 'Reciente', status: 'active', isOnline: true
@@ -711,7 +746,7 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
         <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-[#161b23] border border-[#2a323d] p-8 rounded-2xl shadow-2xl">
           <div className="flex flex-col justify-center space-y-4">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-[#7c5cff] to-[#00d4b1] bg-clip-text text-transparent">Sí señor - Elraizer Community</h1>
-            <p className="text-[#8b97a8]">Comunidad, Marketplace, Mensajería Directa y Panel Maestro.</p>
+            <p className="text-[#8b97a8]">Comunidad, Marketplace con Pago Seguro Directo, Comentarios en Posts y Panel Maestro.</p>
           </div>
           <div className="bg-[#1d242e] p-6 rounded-xl border border-[#2a323d] space-y-4">
             <div className="flex border-b border-[#2a323d] mb-4">
@@ -784,7 +819,7 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
         {activeTab === 'feed' && (
           <div className="space-y-4">
             <div className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
-              <textarea value={newPostText} onChange={(e) => setNewPostText(e.target.value)} placeholder="¿Qué quieres compartir hoy con la comunidad?" className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff] resize-none h-24" />
+              <textarea value={newPostText} onChange={(e) => setNewPostText(e.target.value)} placeholder="¿Qué quieres compartir hoy con la comunidad, Sí señor?" className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7c5cff] resize-none h-24" />
               {postAttachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 p-2 bg-[#1d242e] rounded-xl border border-[#2a323d]">
                   {postAttachments.map(att => (
@@ -811,8 +846,11 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
 
             {posts.map(p => {
               const hasVoted = (p.votedBy || []).includes(currentUser.id);
+              const postComments = p.comments || [];
+              const commentInputVal = commentInputs[p.id] || '';
+
               return (
-                <div key={p.id} className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-3">
+                <div key={p.id} className="bg-[#161b23] border border-[#2a323d] p-4 rounded-xl space-y-4">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white" style={{ backgroundColor: p.author_color }}>{p.author_name[0]}</div>
@@ -843,6 +881,46 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
                       ))}
                     </div>
                   )}
+
+                  {/* SECCIÓN DE COMENTARIOS EN EL POST */}
+                  <div className="border-t border-[#2a323d] pt-3 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-[#8b97a8]">
+                      <MessageCircleReply size={14} className="text-[#00d4b1]" />
+                      <span>Comentarios ({postComments.length})</span>
+                    </div>
+
+                    {postComments.length > 0 && (
+                      <div className="space-y-2 bg-[#11151c] p-3 rounded-xl border border-[#2a323d]">
+                        {postComments.map(c => (
+                          <div key={c.id} className="flex items-start gap-2.5 border-b border-[#2a323d]/40 pb-2 last:border-b-0 last:pb-0">
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0" style={{ backgroundColor: c.author_color }}>
+                              {c.author_name[0]}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-xs text-white">@{c.author_name}</span>
+                                <span className="text-[9px] text-[#8b97a8]">{c.created_at}</span>
+                              </div>
+                              <p className="text-xs text-[#e9eef5] mt-0.5">{c.text}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <form onSubmit={(e) => handleAddComment(p.id, e)} className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={commentInputVal} 
+                        onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })} 
+                        placeholder="Escribe un comentario, Sí señor..." 
+                        className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#7c5cff] text-white" 
+                      />
+                      <button type="submit" className="px-3 py-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow">
+                        <Send size={12} /> Comentar
+                      </button>
+                    </form>
+                  </div>
                 </div>
               );
             })}
@@ -895,7 +973,7 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
               <div ref={chatEndRef} />
             </div>
             <form onSubmit={handleSendGlobalChat} className="p-3 border-t border-[#2a323d] flex gap-2">
-              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff] text-white" placeholder="Escribe un mensaje..." />
+              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff] text-white" placeholder="Escribe un mensaje, Sí señor..." />
               <button type="submit" className="p-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white rounded-xl"><Send size={18}/></button>
             </form>
           </div>
@@ -955,14 +1033,14 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
                           <div ref={dmEndRef} />
                        </div>
                        <form onSubmit={handleSendDm} className="p-3 border-t border-[#2a323d] flex gap-2">
-                          <input type="text" value={dmInput} onChange={e=>setDmInput(e.target.value)} placeholder="Escribe un mensaje privado..." className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff] text-white" />
+                          <input type="text" value={dmInput} onChange={e=>setDmInput(e.target.value)} placeholder="Escribe un mensaje privado, Sí señor..." className="flex-1 bg-[#1d242e] border border-[#2a323d] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#7c5cff] text-white" />
                           <button type="submit" className="p-2 bg-[#7c5cff] hover:bg-[#6b47ff] text-white rounded-xl"><Send size={18}/></button>
                        </form>
                     </>
                  ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-[#8b97a8]">
                        <MessageCircle size={48} className="mb-4 opacity-50" />
-                       <p>Selecciona un usuario a la izquierda para iniciar un chat.</p>
+                       <p>Selecciona un usuario a la izquierda para iniciar tu chat directo.</p>
                     </div>
                  )}
               </div>
@@ -1185,7 +1263,7 @@ Por favor, contáctame para coordinar los métodos de pago de manera directa con
                     </select>
                   </div>
                   <div>
-                    <label className="package-price block text-xs font-semibold text-[#8b97a8] mb-1">Precio (USD) *</label>
+                    <label className="block text-xs font-semibold text-[#8b97a8] mb-1">Precio (USD) *</label>
                     <input type="number" step="0.01" required value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} className="w-full bg-[#1d242e] border border-[#2a323d] rounded-xl p-3 text-sm focus:outline-none focus:border-[#00d4b1] text-white" placeholder="0.00" />
                   </div>
                 </div>
