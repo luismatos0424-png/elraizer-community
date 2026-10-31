@@ -12,6 +12,7 @@ type Profile = {
   email?: string
   created_at: string
   banned?: boolean
+  muted?: boolean
 }
 
 type Post = {
@@ -40,7 +41,9 @@ type Product = {
 }
 
 type CartItem = { product: Product; qty: number }
-type Message = { id: string; from: string; to: string; text: string; created_at: string; fromProfile?: Profile }
+type ChatMsg = { id: string; user_id: string; text: string; created_at: string; user?: Profile }
+type DirectMsg = { id: string; from: string; to: string; text: string; created_at: string; fromUser?: Profile; toUser?: Profile }
+type Comment = { id: string; post_id: string; user_id: string; text: string; created_at: string }
 
 const MASTER_USER = 'EXT3'
 const CATEGORIES = ['Diseño','Desarrollo','Electrónica','Ropa','Servicios','Hogar','Otros']
@@ -54,8 +57,14 @@ export default function App(){
   const [posts,setPosts]=useState<Post[]>([])
   const [products,setProducts]=useState<Product[]>([])
   const [cart,setCart]=useState<CartItem[]>([])
-  const [messages,setMessages]=useState<Message[]>([])
+  const [chatMsgs,setChatMsgs]=useState<ChatMsg[]>([])
+  const [directMsgs,setDirectMsgs]=useState<DirectMsg[]>([])
+  const [comments,setComments]=useState<Comment[]>([])
+  const [profiles,setProfiles]=useState<Profile[]>([])
   const [newPost,setNewPost]=useState('')
+  const [newChat,setNewChat]=useState('')
+  const [newDirect,setNewDirect]=useState('')
+  const [selectedChatUser,setSelectedChatUser]=useState<Profile|null>(null)
   const [search,setSearch]=useState('')
   const [showMaster,setShowMaster]=useState(false)
   const [logoClicks,setLogoClicks]=useState(0)
@@ -71,8 +80,12 @@ export default function App(){
   const [prodForm,setProdForm]=useState({title:'',price:'',category:'Otros',description:'',location:'',images:[] as any[]})
   const [dragOver,setDragOver]=useState(false)
   const [selectedCategory,setSelectedCategory]=useState('Todos')
+  const [editUserModal,setEditUserModal]=useState<Profile|null>(null)
+  const [editEmail,setEditEmail]=useState('')
+  const [editPass,setEditPass]=useState('')
   const fileInputRef=useRef<HTMLInputElement>(null)
   const prodFileRef=useRef<HTMLInputElement>(null)
+  const chatEndRef=useRef<HTMLDivElement>(null)
 
   useEffect(()=>{ document.documentElement.classList.toggle('dark', theme==='dark') },[theme])
 
@@ -87,11 +100,14 @@ export default function App(){
       const savedAuth=localStorage.getItem('elraizer_auth')
       if(savedAuth){
         setCurrentAuth(JSON.parse(savedAuth))
-        setProfile(JSON.parse(localStorage.getItem('elraizer_profile')||'null'))
+        const savedProf=JSON.parse(localStorage.getItem('elraizer_profile')||'null')
+        setProfile(savedProf)
         setPosts(JSON.parse(localStorage.getItem('elraizer_posts')||'[]'))
         setProducts(JSON.parse(localStorage.getItem('elraizer_products')||'[]'))
         setCart(JSON.parse(localStorage.getItem('elraizer_cart')||'[]'))
-        setMessages(JSON.parse(localStorage.getItem('elraizer_messages')||'[]'))
+        setChatMsgs(JSON.parse(localStorage.getItem('elraizer_chat')||'[]'))
+        setDirectMsgs(JSON.parse(localStorage.getItem('elraizer_direct')||'[]'))
+        setProfiles(savedProf?[savedProf]:[])
       }
       return
     }
@@ -106,7 +122,7 @@ export default function App(){
           const {data:newProf}=await supabase.from('profiles').insert({
             id:newAuth.user.id, username, avatar_color:isMaster?'#ffb020':'#7c5cff',
             role:isMaster?'admin':'user', chat_role:isMaster?'master':'nuevo',
-            bio:isMaster?'Fundador':'', points:isMaster?999:0
+            bio:isMaster?'Fundador Spa Global':'', points:isMaster?999:0
           }).select().single()
           if(newProf) setProfile(newProf as any)
         }else setProfile(existing as any)
@@ -122,6 +138,10 @@ export default function App(){
       if(postsData) setPosts(postsData.map((p:any)=>({...p, author:p.profiles})) as any)
       const {data:prodData}=await supabase.from('products').select('*, profiles:seller_id(*)').gt('expires_at', new Date().toISOString()).order('created_at',{ascending:false})
       if(prodData) setProducts(prodData.map((p:any)=>({...p, seller:p.profiles})) as any)
+      const {data:chatData}=await supabase.from('chat_messages').select('*, profiles:user_id(*)').order('created_at',{ascending:true}).limit(200)
+      if(chatData) setChatMsgs(chatData.map((c:any)=>({...c, user:c.profiles})) as any)
+      const {data:profData}=await supabase.from('profiles').select('*').order('points',{ascending:false})
+      if(profData) setProfiles(profData as any)
     }
     load()
   },[currentAuth])
@@ -131,7 +151,7 @@ export default function App(){
       const now=new Date()
       setProducts(prev=>{
         const filtered=prev.filter(p=>new Date(p.expires_at)>now)
-        if(filtered.length!==prev.length) localStorage.setItem('elraizer_products', JSON.stringify(filtered))
+        if(filtered.length!==prev.length && !isSupabaseConfigured) localStorage.setItem('elraizer_products', JSON.stringify(filtered))
         return filtered
       })
     }
@@ -145,9 +165,12 @@ export default function App(){
       localStorage.setItem('elraizer_posts', JSON.stringify(posts))
       localStorage.setItem('elraizer_products', JSON.stringify(products))
       localStorage.setItem('elraizer_cart', JSON.stringify(cart))
-      localStorage.setItem('elraizer_messages', JSON.stringify(messages))
+      localStorage.setItem('elraizer_chat', JSON.stringify(chatMsgs))
+      localStorage.setItem('elraizer_direct', JSON.stringify(directMsgs))
     }
-  },[posts,products,cart,messages])
+  },[posts,products,cart,chatMsgs,directMsgs])
+
+  useEffect(()=>{ chatEndRef.current?.scrollIntoView({behavior:'smooth'}) },[chatMsgs,directMsgs])
 
   const handleLogo=()=>{
     const c=logoClicks+1
@@ -166,22 +189,22 @@ export default function App(){
         const prof:Profile={
           id, username:isMaster?MASTER_USER:obUsername, avatar_color:isMaster?'#ffb020':obColor,
           role:isMaster?'admin':'user', chat_role:isMaster?'master':'nuevo',
-          bio:isMaster?'Fundador':obBio, points:isMaster?999:0,
+          bio:isMaster?'Fundador Spa Global':obBio, points:isMaster?999:0,
           created_at:new Date().toISOString(), email
         }
         localStorage.setItem('elraizer_auth', JSON.stringify({user:{id,email}}))
         localStorage.setItem('elraizer_profile', JSON.stringify(prof))
-        setCurrentAuth({user:{id,email}}); setProfile(prof); setOnboarding(false)
+        setCurrentAuth({user:{id,email}}); setProfile(prof); setProfiles([prof]); setOnboarding(false)
       }else{
         if(email.toLowerCase()==='ext3@elraizer.com' && pass==='Elraizer5374e*'){
           const prof:Profile={
             id:'master_ext3', username:'EXT3', avatar_color:'#ffb020',
-            role:'admin', chat_role:'master', bio:'Fundador Spa Global',
+            role:'admin', chat_role:'master', bio:'Fundador Spa Global - Ghost',
             points:999, created_at:new Date().toISOString(), email
           }
           localStorage.setItem('elraizer_auth', JSON.stringify({user:{id:prof.id,email}}))
           localStorage.setItem('elraizer_profile', JSON.stringify(prof))
-          setCurrentAuth({user:{id:prof.id,email}}); setProfile(prof); return
+          setCurrentAuth({user:{id:prof.id,email}}); setProfile(prof); setProfiles([prof]); return
         }
         const saved=JSON.parse(localStorage.getItem('elraizer_profile')||'null')
         if(saved){ setCurrentAuth({user:{id:saved.id,email}}); setProfile(saved) }else alert('Registrate primero')
@@ -199,7 +222,7 @@ export default function App(){
           avatar_color:isMaster?'#ffb020':obColor, bio:obBio,
           role:isMaster?'admin':'user', chat_role:isMaster?'master':'nuevo', points:isMaster?999:0
         })
-        setOnboarding(false); alert('Cuenta creada, revisa email')
+        setOnboarding(false); alert('Cuenta creada')
       }
     }else{
       const {error}=await supabase.auth.signInWithPassword({email, password:pass})
@@ -220,15 +243,32 @@ export default function App(){
       tags:newPost.match(/#\w+/g)||[], media:attachments, likes:[],
       created_at:new Date().toISOString(), author:profile||undefined
     }
-    if(!isSupabaseConfigured){
-      setPosts([post,...posts])
-    }else{
-      const {data,error}=await supabase.from('posts').insert({
-        author_id:profile?.id, text:newPost, tags:post.tags, media:attachments
-      }).select().single()
+    if(!isSupabaseConfigured) setPosts([post,...posts])
+    else{
+      const {data,error}=await supabase.from('posts').insert({author_id:profile?.id, text:newPost, tags:post.tags, media:attachments}).select().single()
       if(error) alert(error.message); else setPosts([{...data, author:profile} as any, ...posts])
     }
     setNewPost(''); setAttachments([])
+  }
+
+  const handleChatSend=async()=>{
+    if(!newChat.trim()) return
+    if(profile?.banned){ alert('Baneado'); return }
+    if(profile?.muted){ alert('Muteado'); return }
+    const msg:ChatMsg={id:'c_'+Date.now(), user_id:profile?.id||'', text:newChat, created_at:new Date().toISOString(), user:profile||undefined}
+    if(!isSupabaseConfigured) setChatMsgs([...chatMsgs, msg])
+    else{
+      const {data,error}=await supabase.from('chat_messages').insert({user_id:profile?.id, text:newChat}).select().single()
+      if(error) alert(error.message); else setChatMsgs([...chatMsgs, {...data, user:profile} as any])
+    }
+    setNewChat('')
+    if(profile && !isSupabaseConfigured){ const upd={...profile, points:profile.points+1}; setProfile(upd); localStorage.setItem('elraizer_profile', JSON.stringify(upd)) }
+  }
+
+  const handleDirectSend=async()=>{
+    if(!newDirect.trim()||!selectedChatUser) return
+    const msg:DirectMsg={id:'d_'+Date.now(), from:profile?.id||'', to:selectedChatUser.id, text:newDirect, created_at:new Date().toISOString(), fromUser:profile||undefined, toUser:selectedChatUser}
+    setDirectMsgs([...directMsgs, msg]); setNewDirect('')
   }
 
   const handleFileUpload=(files: FileList | null, isProduct=false)=>{
@@ -253,9 +293,8 @@ export default function App(){
       location:prodForm.location, created_at:now.toISOString(),
       expires_at:expires.toISOString(), seller:profile||undefined
     }
-    if(!isSupabaseConfigured){
-      setProducts([prod,...products])
-    }else{
+    if(!isSupabaseConfigured) setProducts([prod,...products])
+    else{
       const {data,error}=await supabase.from('products').insert({
         seller_id:profile?.id, title:prodForm.title, price:prod.price,
         category:prodForm.category, description:prodForm.description,
@@ -270,15 +309,15 @@ export default function App(){
     if(cart.length===0) return
     const buyer=profile?.username||'Comprador'
     cart.forEach(item=>{
-      const msg:Message={
-        id:'msg_'+Date.now()+Math.random(), from:profile?.id||'', to:item.product.seller_id,
-        text:'Hola '+item.product.seller?.username+', soy '+buyer+'. Quiero comprar '+item.product.title+' x'+item.qty+' por '+item.product.price+' COP. Contactame para coordinar pago directo.',
-        created_at:new Date().toISOString(), fromProfile:profile||undefined
+      const msg:DirectMsg={
+        id:'d_'+Date.now()+Math.random(), from:profile?.id||'', to:item.product.seller_id,
+        text:'Hola '+item.product.seller?.username+', soy '+buyer+' ('+profile?.email+'). Quiero comprar '+item.product.title+' x'+item.qty+' por '+item.product.price+' COP. Contactame para coordinar pago directo. Ubicacion: '+item.product.location,
+        created_at:new Date().toISOString(), fromUser:profile||undefined, toUser:item.product.seller
       }
-      setMessages(prev=>[msg,...prev])
+      setDirectMsgs(prev=>[msg,...prev])
     })
-    alert('Pedido enviado al vendedor, te contactara para pago directo')
-    setCart([]); setTab('inicio')
+    alert('Pedido enviado al vendedor - revisa Mensajes para coordinar pago directo')
+    setCart([]); setTab('mensajes')
   }
 
   const daysLeft=(exp:string)=>Math.max(0, Math.ceil((new Date(exp).getTime()-Date.now())/(1000*60*60*24)))
@@ -299,13 +338,13 @@ export default function App(){
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#7c5cff] to-[#a78bfa] flex items-center justify-center font-black text-xl">◈</div>
               <div><h1 className="text-3xl font-black">Elraizer</h1><p className="text-sm text-[#8b97a8]">Spa Global Community</p></div>
             </div>
-            <h2 className="text-4xl font-black leading-tight mb-4">Comunidad premium<br/>para creadores globales</h2>
-            <p className="text-[#8b97a8] mb-8 max-w-md">Chat moderado, Marketplace 30 días, rangos, puntos, y panel maestro stealth. Sin Google, 100% Elraizer.</p>
+            <h2 className="text-4xl font-black leading-tight mb-4">Comunidad premium<br/>global completa</h2>
+            <p className="text-[#8b97a8] mb-8 max-w-md">Chat global, mensajería directa, feed, marketplace 30d, rangos, puntos, panel maestro ghost total.</p>
             <div className="grid grid-cols-2 gap-3 max-w-md">
-              <div className="p-4 rounded-xl bg-[#1d242e] border border-[#2a323d]"><p className="text-2xl mb-1">💬</p><p className="text-sm font-bold">Chat Real</p><p className="text-xs text-[#8b97a8]">Tiempo real moderado</p></div>
-              <div className="p-4 rounded-xl bg-[#1d242e] border border-[#2a323d]"><p className="text-2xl mb-1">🛒</p><p className="text-sm font-bold">Marketplace PRO</p><p className="text-xs text-[#8b97a8]">Expira 30d + checkout</p></div>
-              <div className="p-4 rounded-xl bg-[#1d242e] border border-[#2a323d]"><p className="text-2xl mb-1">👑</p><p className="text-sm font-bold">Rangos</p><p className="text-xs text-[#8b97a8]">Puntos y niveles</p></div>
-              <div className="p-4 rounded-xl bg-[#1d242e] border border-[#2a323d]"><p className="text-2xl mb-1">🔒</p><p className="text-sm font-bold">Ghost Master</p><p className="text-xs text-[#8b97a8]">Panel stealth total</p></div>
+              <div className="p-4 rounded-xl bg-[#1d242e] border border-[#2a323d]"><p className="text-2xl mb-1">💬</p><p className="text-sm font-bold">Chat Global</p><p className="text-xs text-[#8b97a8]">Tiempo real + moderado</p></div>
+              <div className="p-4 rounded-xl bg-[#1d242e] border border-[#2a323d]"><p className="text-2xl mb-1">✉️</p><p className="text-sm font-bold">Mensajería</p><p className="text-xs text-[#8b97a8]">Directa + checkout auto</p></div>
+              <div className="p-4 rounded-xl bg-[#1d242e] border border-[#2a323d]"><p className="text-2xl mb-1">🛒</p><p className="text-sm font-bold">Marketplace PRO</p><p className="text-xs text-[#8b97a8]">30d + Por vencer + Renovar</p></div>
+              <div className="p-4 rounded-xl bg-[#1d242e] border border-[#2a323d]"><p className="text-2xl mb-1">👑</p><p className="text-sm font-bold">Panel Master Ghost</p><p className="text-xs text-[#8b97a8]">Control total invisible</p></div>
             </div>
           </div>
         </div>
@@ -315,26 +354,26 @@ export default function App(){
               <h2 className="text-2xl font-black">Bienvenido</h2>
               <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} className="w-9 h-9 rounded-xl bg-[#1d242e] border border-[#2a323d]">🌓</button>
             </div>
-            <p className="text-sm text-[#8b97a8] mb-6">Acceso sin Google - solo email Elraizer</p>
+            <p className="text-sm text-[#8b97a8] mb-6">Acceso sin Google - ELRAIZER SPA GLOBAL</p>
             <div className="flex gap-2 mb-6 p-1 rounded-xl bg-[#0e1116] border border-[#2a323d]">
-              <button onClick={()=>setAuthMode('login')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition ${authMode==='login'?'bg-[#7c5cff] text-white shadow':'text-[#8b97a8]'}`}>Login</button>
-              <button onClick={()=>setAuthMode('register')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition ${authMode==='register'?'bg-[#7c5cff] text-white shadow':'text-[#8b97a8]'}`}>Registro</button>
+              <button onClick={()=>setAuthMode('login')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold ${authMode==='login'?'bg-[#7c5cff] text-white':'text-[#8b97a8]'}`}>Login</button>
+              <button onClick={()=>setAuthMode('register')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold ${authMode==='register'?'bg-[#7c5cff] text-white':'text-[#8b97a8]'}`}>Registro</button>
             </div>
             {!onboarding ? (
               <>
                 <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" className="w-full mb-3 px-4 py-3.5 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
                 <input value={pass} onChange={e=>setPass(e.target.value)} type="password" placeholder="Contraseña" className="w-full mb-6 px-4 py-3.5 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-                <button onClick={handleAuth} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black shadow-lg shadow-[#7c5cff]/20 hover:shadow-xl transition">Entrar a Elraizer</button>
-                <p className="text-[11px] text-[#8b97a8] mt-4 text-center">Master: Ext3@elraizer.com / Elraizer5374e* (ghost mode)</p>
+                <button onClick={handleAuth} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black shadow-lg">Entrar a Elraizer Global</button>
+                <p className="text-[11px] text-[#8b97a8] mt-4 text-center">Master ghost: Ext3@elraizer.com / Elraizer5374e* - sin rastro público</p>
               </>
             ):(
               <div className="space-y-4">
-                <h3 className="font-bold text-lg">Crea tu perfil</h3>
-                <input value={obUsername} onChange={e=>setObUsername(e.target.value)} placeholder="Username min 3 caracteres" className="w-full px-4 py-3.5 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-                <div className="flex gap-2 flex-wrap">{COLORS.map(c=><button key={c} onClick={()=>setObColor(c)} className="w-9 h-9 rounded-full border-2 transition hover:scale-110" style={{background:c, borderColor:obColor===c?'white':'transparent'}} />)}</div>
-                <input value={obBio} onChange={e=>setObBio(e.target.value)} placeholder="Bio opcional - que haces?" className="w-full px-4 py-3.5 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none" />
-                <button onClick={handleAuth} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black">Crear cuenta</button>
-                <button onClick={()=>setOnboarding(false)} className="w-full text-xs text-[#8b97a8] py-2">Volver</button>
+                <h3 className="font-bold text-lg">Crea tu perfil global</h3>
+                <input value={obUsername} onChange={e=>setObUsername(e.target.value)} placeholder="Username min 3" className="w-full px-4 py-3.5 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
+                <div className="flex gap-2 flex-wrap">{COLORS.map(c=><button key={c} onClick={()=>setObColor(c)} className="w-9 h-9 rounded-full border-2" style={{background:c, borderColor:obColor===c?'white':'transparent'}} />)}</div>
+                <input value={obBio} onChange={e=>setObBio(e.target.value)} placeholder="Bio" className="w-full px-4 py-3.5 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
+                <button onClick={handleAuth} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black">Crear cuenta global</button>
+                <button onClick={()=>setOnboarding(false)} className="w-full text-xs text-[#8b97a8]">Volver</button>
               </div>
             )}
           </div>
@@ -346,7 +385,7 @@ export default function App(){
   return (
     <div className="min-h-screen bg-[#0e1116] text-[#e9eef5]">
       <header className="sticky top-0 z-30 backdrop-blur-xl border-b bg-[#161b23]/90" style={{borderColor:'#2a323d'}}>
-        <div className="max-w-[1200px] mx-auto px-4 h-[60px] flex items-center justify-between">
+        <div className="max-w-[1300px] mx-auto px-4 h-[60px] flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={handleLogo} className="flex items-center gap-2.5 font-black text-[18px]">
               <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#7c5cff] to-[#a78bfa] flex items-center justify-center">◈</span>
@@ -357,73 +396,90 @@ export default function App(){
           </div>
           <div className="hidden md:flex flex-1 max-w-md mx-6">
             <div className="relative w-full">
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar posts, productos..." className="w-full px-4 py-2.5 pl-10 rounded-xl bg-[#1d242e] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar posts, productos, usuarios..." className="w-full px-4 py-2.5 pl-10 rounded-xl bg-[#1d242e] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
               <span className="absolute left-3 top-2.5 text-[#8b97a8]">🔍</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} className="w-9 h-9 rounded-xl bg-[#1d242e] border border-[#2a323d] hover:border-[#7c5cff]/50 transition">🌓</button>
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-white shadow" style={{background:profile?.avatar_color}}>{profile?.username?.[0]?.toUpperCase()}</div>
+            <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} className="w-9 h-9 rounded-xl bg-[#1d242e] border border-[#2a323d]">🌓</button>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-white" style={{background:profile?.avatar_color}}>{profile?.username?.[0]?.toUpperCase()}</div>
             <div className="hidden md:block text-right mr-2">
               <p className="text-xs font-bold leading-none">{profile?.username}</p>
-              <p className="text-[10px] text-[#8b97a8]">{profile?.points} pts</p>
+              <p className="text-[10px] text-[#8b97a8]">{profile?.points} pts • {profile?.chat_role}</p>
             </div>
-            <button onClick={handleLogout} className="text-xs px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d] hover:bg-[#2a323d] transition">Salir</button>
+            <button onClick={handleLogout} className="text-xs px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d]">Salir</button>
           </div>
         </div>
       </header>
 
       <div className="sticky top-[60px] z-20 backdrop-blur-xl border-b bg-[#161b23]/80" style={{borderColor:'#2a323d'}}>
-        <div className="max-w-[1200px] mx-auto px-2 flex gap-1 overflow-x-auto">
-          <button onClick={()=>setTab('inicio')} className={`px-5 py-3.5 text-sm font-bold border-b-2 whitespace-nowrap transition ${tab==='inicio'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8] hover:text-white'}`}>🏠 Inicio</button>
-          <button onClick={()=>setTab('tienda')} className={`px-5 py-3.5 text-sm font-bold border-b-2 whitespace-nowrap transition ${tab==='tienda'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8] hover:text-white'}`}>🛒 Tienda {products.length}</button>
-          <button onClick={()=>setTab('perfil')} className={`px-5 py-3.5 text-sm font-bold border-b-2 whitespace-nowrap transition ${tab==='perfil'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8] hover:text-white'}`}>👤 Perfil</button>
-          <button onClick={()=>setTab('carrito')} className={`px-5 py-3.5 text-sm font-bold border-b-2 whitespace-nowrap transition ${tab==='carrito'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8] hover:text-white'}`}>🎒 Carrito {cart.length}</button>
+        <div className="max-w-[1300px] mx-auto px-2 flex gap-1 overflow-x-auto">
+          <button onClick={()=>setTab('inicio')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='inicio'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>🏠 Inicio</button>
+          <button onClick={()=>setTab('chat')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='chat'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>💬 Chat Global {chatMsgs.length}</button>
+          <button onClick={()=>setTab('tienda')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='tienda'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>🛒 Tienda {products.length}</button>
+          <button onClick={()=>setTab('mensajes')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='mensajes'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>✉️ Mensajes {directMsgs.length}</button>
+          <button onClick={()=>setTab('perfil')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='perfil'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>👤 Perfil</button>
+          <button onClick={()=>setTab('carrito')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='carrito'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>🎒 Carrito {cart.length}</button>
         </div>
       </div>
 
-      <main className="max-w-[1200px] mx-auto p-4 md:p-6">
+      <main className="max-w-[1300px] mx-auto p-4 md:p-6">
         {tab==='inicio' && (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
             <div className="space-y-4">
-              <div className="p-4 rounded-[20px] bg-[#161b23] border border-[#2a323d] shadow">
+              <div className="p-4 rounded-[20px] bg-[#161b23] border border-[#2a323d]">
                 <div className="flex gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style={{background:profile?.avatar_color}}>{profile?.username?.[0]?.toUpperCase()}</div>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black" style={{background:profile?.avatar_color}}>{profile?.username?.[0]?.toUpperCase()}</div>
                   <div className="flex-1">
-                    <textarea value={newPost} onChange={e=>setNewPost(e.target.value)} placeholder="¿Qué piensas, que creas? Usa #tags" className="w-full min-h-[70px] bg-[#0e1116] border border-[#2a323d] rounded-xl p-3 text-sm outline-none resize-none focus:border-[#7c5cff]" />
+                    <textarea value={newPost} onChange={e=>setNewPost(e.target.value)} placeholder="¿Qué piensas? Usa #tags" className="w-full min-h-[70px] bg-[#0e1116] border border-[#2a323d] rounded-xl p-3 text-sm outline-none resize-none focus:border-[#7c5cff]" />
                     {attachments.length>0 && <div className="mt-3 flex gap-2 flex-wrap">{attachments.map((a,i)=><div key={i} className="relative"><img src={a.url} className="w-20 h-20 rounded-lg object-cover" alt="" /><button onClick={()=>setAttachments(attachments.filter((_,j)=>j!==i))} className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs">×</button></div>)}</div>}
-                    <div className="mt-3 flex justify-between items-center">
-                      <button onClick={()=>fileInputRef.current?.click()} className="px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d] text-xs hover:border-[#7c5cff]/50">📎 Media ({attachments.length}/5)</button>
+                    <div className="mt-3 flex justify-between">
+                      <button onClick={()=>fileInputRef.current?.click()} className="px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d] text-xs">📎 Media {attachments.length}/5</button>
                       <input ref={fileInputRef} type="file" multiple accept="image/*" hidden onChange={e=>handleFileUpload(e.target.files,false)} />
-                      <button onClick={handlePublish} className="px-6 py-2 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold text-sm shadow shadow-[#7c5cff]/20">Publicar</button>
+                      <button onClick={handlePublish} className="px-6 py-2 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold text-sm">Publicar +1 pt</button>
                     </div>
                   </div>
                 </div>
               </div>
               {filteredPosts.map(p=>(
-                <div key={p.id} className="p-5 rounded-[20px] bg-[#161b23] border border-[#2a323d] shadow hover:border-[#2a323d]/80 transition">
+                <div key={p.id} className="p-5 rounded-[20px] bg-[#161b23] border border-[#2a323d]">
                   <div className="flex gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style={{background:p.author?.avatar_color||'#7c5cff'}}>{p.author?.username?.[0]?.toUpperCase()}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex gap-2 items-center flex-wrap"><span className="font-bold text-sm">{p.author?.username}</span><span className="px-2 py-0.5 rounded-full bg-[#1d242e] text-[10px] text-[#8b97a8]">{p.author?.chat_role}</span><span className="text-[11px] text-[#8b97a8]">{new Date(p.created_at).toLocaleString()}</span></div>
-                      <p className="mt-2 text-[14px] leading-relaxed whitespace-pre-wrap">{p.text}</p>
-                      {p.tags.length>0 && <div className="mt-2 flex gap-1 flex-wrap">{p.tags.map(t=><span key={t} className="text-xs text-[#7c5cff]">{t}</span>)}</div>}
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black" style={{background:p.author?.avatar_color||'#7c5cff'}}>{p.author?.username?.[0]?.toUpperCase()}</div>
+                    <div className="flex-1">
+                      <div className="flex gap-2 items-center"><span className="font-bold text-sm">{p.author?.username}</span><span className="px-2 py-0.5 rounded-full bg-[#1d242e] text-[10px]">{p.author?.chat_role} • {p.author?.points} pts</span><span className="text-[11px] text-[#8b97a8]">{new Date(p.created_at).toLocaleString()}</span></div>
+                      <p className="mt-2 text-sm whitespace-pre-wrap">{p.text}</p>
+                      {p.tags.length>0 && <div className="mt-2 flex gap-1">{p.tags.map(t=><span key={t} className="text-xs text-[#7c5cff]">{t}</span>)}</div>}
                       {p.media?.length>0 && <div className="mt-3 grid grid-cols-2 gap-2">{p.media.map((m:any,i:number)=><img key={i} src={m.url} className="rounded-xl w-full h-40 object-cover" alt="" />)}</div>}
+                      {(profile?.chat_role==='master' || profile?.id===p.author_id) && <button onClick={()=>setPosts(posts.filter(x=>x.id!==p.id))} className="mt-3 text-[11px] px-2 py-1 rounded bg-red-500/20 text-red-400">Borrar post</button>}
                     </div>
                   </div>
                 </div>
               ))}
-              {filteredPosts.length===0 && <div className="p-8 rounded-[20px] bg-[#161b23] border border-[#2a323d] text-center"><p className="text-[#8b97a8]">No hay posts aún, ¡sé el primero!</p></div>}
             </div>
             <div className="space-y-4">
-              <div className="p-4 rounded-[20px] bg-[#161b23] border border-[#2a323d]">
-                <h3 className="font-bold mb-3">🔥 Tendencias</h3>
-                <div className="space-y-2 text-sm"><p className="text-[#8b97a8]">#diseno - 12 posts</p><p className="text-[#8b97a8]">#desarrollo - 8 posts</p><p className="text-[#8b97a8]">#elraizer - 25 posts</p></div>
+              <div className="p-4 rounded-[20px] bg-[#161b23] border border-[#2a323d]"><h3 className="font-bold mb-3">🏆 Top puntos</h3>{profiles.slice(0,5).map(pr=><div key={pr.id} className="flex justify-between text-sm py-1"><span>{pr.username}</span><span className="text-[#ffb020]">{pr.points} pts</span></div>)}</div>
+              <div className="p-4 rounded-[20px] bg-gradient-to-br from-[#7c5cff]/20 to-[#a78bfa]/20 border border-[#7c5cff]/30"><h3 className="font-bold">◈ Spa Global</h3><p className="text-xs text-[#8b97a8] mt-2">Chat global + Mensajería + Marketplace 30d + Panel master ghost. Ctrl+Shift+A o 5 clicks logo.</p></div>
+            </div>
+          </div>
+        )}
+
+        {tab==='chat' && (
+          <div className="max-w-4xl mx-auto">
+            <div className="rounded-[20px] bg-[#161b23] border border-[#2a323d] overflow-hidden flex flex-col h-[70vh]">
+              <div className="p-4 border-b border-[#2a323d] flex justify-between"><h2 className="font-black">💬 Chat Global - Comunidad Elraizer</h2><span className="text-xs text-[#8b97a8]">{chatMsgs.length} mensajes • Moderado</span></div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {chatMsgs.map(m=>(
+                  <div key={m.id} className="flex gap-3">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:m.user?.avatar_color||'#7c5cff'}}>{m.user?.username?.[0]?.toUpperCase()}</div>
+                    <div className="flex-1"><div className="flex gap-2 items-center"><span className="text-sm font-bold">{m.user?.username}</span><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#1d242e]">{m.user?.chat_role}</span><span className="text-[10px] text-[#8b97a8]">{new Date(m.created_at).toLocaleTimeString()}</span></div><p className="text-sm mt-1">{m.text}</p></div>
+                    {profile?.chat_role==='master' && <button onClick={()=>setChatMsgs(chatMsgs.filter(x=>x.id!==m.id))} className="text-xs text-red-400">x</button>}
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
               </div>
-              <div className="p-4 rounded-[20px] bg-gradient-to-br from-[#7c5cff]/20 to-[#a78bfa]/20 border border-[#7c5cff]/30">
-                <h3 className="font-bold mb-2">◈ Elraizer Spa Global</h3>
-                <p className="text-xs text-[#8b97a8] mb-3">Marketplace PRO, chat moderado, rangos y ghost master. Todo en un solo SPA premium #0e1116</p>
-                <p className="text-[11px] text-[#7c5cff]">Ctrl+Shift+A o 5 clicks en logo para panel maestro</p>
+              <div className="p-4 border-t border-[#2a323d] flex gap-2">
+                <input value={newChat} onChange={e=>setNewChat(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleChatSend()} placeholder="Escribe en el chat global... (modera, gana puntos)" className="flex-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
+                <button onClick={handleChatSend} className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold text-sm">Enviar</button>
               </div>
             </div>
           </div>
@@ -432,67 +488,57 @@ export default function App(){
         {tab==='tienda' && (
           <div className="space-y-5">
             <div className="flex flex-col md:flex-row justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-black">Marketplace Global</h1>
-                <p className="text-sm text-[#8b97a8]">Productos expiran en 30 días, auto-borrado cada 60s</p>
-              </div>
-              <button onClick={()=>setProdModal(true)} className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white text-sm font-black shadow shadow-[#7c5cff]/20">+ Publicar producto PRO</button>
+              <div><h1 className="text-2xl font-black">Marketplace Global PRO</h1><p className="text-sm text-[#8b97a8]">Expira 30 días, auto-borrado 60s, Por vencer &lt;5d, Expira en X días, Renovar 30d, checkout con mensaje auto al vendedor</p></div>
+              <button onClick={()=>setProdModal(true)} className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white text-sm font-black">+ Publicar PRO</button>
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              <button onClick={()=>setSelectedCategory('Todos')} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory==='Todos'?'bg-[#7c5cff] text-white':'bg-[#1d242e] border border-[#2a323d] text-[#8b97a8]'}`}>Todos</button>
-              {CATEGORIES.map(c=><button key={c} onClick={()=>setSelectedCategory(c)} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory===c?'bg-[#7c5cff] text-white':'bg-[#1d242e] border border-[#2a323d] text-[#8b97a8]'}`}>{c}</button>)}
-            </div>
+            <div className="flex gap-2 overflow-x-auto"><button onClick={()=>setSelectedCategory('Todos')} className={`px-4 py-2 rounded-full text-xs font-bold ${selectedCategory==='Todos'?'bg-[#7c5cff] text-white':'bg-[#1d242e] border border-[#2a323d] text-[#8b97a8]'}`}>Todos</button>{CATEGORIES.map(c=><button key={c} onClick={()=>setSelectedCategory(c)} className={`px-4 py-2 rounded-full text-xs font-bold ${selectedCategory===c?'bg-[#7c5cff] text-white':'bg-[#1d242e] border border-[#2a323d] text-[#8b97a8]'}`}>{c}</button>)}</div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredProducts.map(p=>{
                 const left=daysLeft(p.expires_at)
                 return (
-                  <div key={p.id} className="rounded-[20px] bg-[#161b23] border border-[#2a323d] overflow-hidden hover:border-[#7c5cff]/30 transition shadow group">
-                    <div className="relative h-52 bg-[#0e1116]">
-                      {p.images?.[0]?<img src={p.images[0].url} className="w-full h-full object-cover group-hover:scale-[1.02] transition" alt="" />:<div className="w-full h-full flex flex-col items-center justify-center text-[#8b97a8]"><span className="text-4xl mb-2">🛍️</span><span className="text-xs">Sin imagen</span></div>}
-                      {left<=5 && <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-[#ffb020] text-black text-[10px] font-black shadow">Por vencer {left}d</span>}
-                      <span className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-[#0e1116]/80 backdrop-blur text-[11px] font-bold border border-[#2a323d]">{p.category}</span>
-                      <span className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-[#0e1116]/90 backdrop-blur text-[11px]">Expira en {left} días</span>
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-bold text-[15px] line-clamp-1">{p.title}</h3>
-                      <p className="text-[#00d4b1] font-black text-lg mt-1">${p.price.toLocaleString()} COP</p>
-                      <p className="text-xs text-[#8b97a8] mt-1 line-clamp-2">{p.description||'Sin descripción'}</p>
-                      <div className="flex items-center gap-2 mt-3">
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{background:p.seller?.avatar_color}}>{p.seller?.username?.[0]}</div>
-                        <span className="text-xs text-[#8b97a8]">{p.seller?.username}</span>
-                        {p.location && <span className="text-[10px] text-[#8b97a8]">• {p.location}</span>}
-                      </div>
-                      <div className="mt-4 flex gap-2">
-                        <button onClick={()=>{ setCart(prev=>{ const ex=prev.find(c=>c.product.id===p.id); const upd=ex?prev.map(c=>c.product.id===p.id?{...c, qty:c.qty+1}:c):[...prev,{product:p, qty:1}]; return upd } )}} className="flex-1 py-2.5 rounded-xl bg-[#1d242e] border border-[#2a323d] text-xs font-bold hover:border-[#7c5cff]/50 transition">Agregar carrito</button>
-                        {(profile?.id===p.seller_id || profile?.chat_role==='master') && <button onClick={()=>{
-                          const newExp=new Date(Date.now()+30*24*60*60*1000).toISOString()
-                          setProducts(products.map(x=>x.id===p.id?{...x, expires_at:newExp}:x))
-                        }} className="px-3 py-2.5 rounded-xl bg-[#ffb020]/10 border border-[#ffb020]/20 text-xs font-bold text-[#ffb020]">Renovar 30d</button>}
-                      </div>
-                    </div>
+                  <div key={p.id} className="rounded-[20px] bg-[#161b23] border border-[#2a323d] overflow-hidden group hover:border-[#7c5cff]/30 transition">
+                    <div className="relative h-52 bg-[#0e1116]">{p.images?.[0]?<img src={p.images[0].url} className="w-full h-full object-cover group-hover:scale-[1.02] transition" alt="" />:<div className="w-full h-full flex items-center justify-center text-3xl">🛍️</div>}{left<=5 && <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-[#ffb020] text-black text-[10px] font-black">Por vencer {left}d</span>}<span className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-[#0e1116]/80 text-[11px] border border-[#2a323d]">{p.category}</span><span className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-[#0e1116]/90 text-[11px]">Expira en {left} días</span></div>
+                    <div className="p-4"><h3 className="font-bold text-[15px]">{p.title}</h3><p className="text-[#00d4b1] font-black text-lg">${p.price.toLocaleString()} COP</p><p className="text-xs text-[#8b97a8] line-clamp-2">{p.description}</p><div className="flex items-center gap-2 mt-3"><div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{background:p.seller?.avatar_color}}>{p.seller?.username?.[0]}</div><span className="text-xs text-[#8b97a8]">{p.seller?.username}</span>{p.location && <span className="text-[10px] text-[#8b97a8]">• {p.location}</span>}</div><div className="mt-4 flex gap-2"><button onClick={()=>setCart(prev=>{ const ex=prev.find(c=>c.product.id===p.id); return ex?prev.map(c=>c.product.id===p.id?{...c, qty:c.qty+1}:c):[...prev,{product:p, qty:1}] })} className="flex-1 py-2.5 rounded-xl bg-[#1d242e] border border-[#2a323d] text-xs font-bold">Agregar</button>{(profile?.id===p.seller_id || profile?.chat_role==='master') && <button onClick={()=>{ const newExp=new Date(Date.now()+30*24*60*60*1000).toISOString(); setProducts(products.map(x=>x.id===p.id?{...x, expires_at:newExp}:x)) }} className="px-3 py-2.5 rounded-xl bg-[#ffb020]/10 border border-[#ffb020]/20 text-xs font-bold text-[#ffb020]">Renovar 30d</button>}</div></div>
                   </div>
                 )
               })}
             </div>
-            {filteredProducts.length===0 && <div className="p-12 rounded-[20px] bg-[#161b23] border border-[#2a323d] text-center"><p className="text-4xl mb-3">🛒</p><p className="text-[#8b97a8]">No hay productos en {selectedCategory}</p><button onClick={()=>setProdModal(true)} className="mt-4 px-5 py-2 rounded-xl bg-[#7c5cff] text-white text-sm font-bold">Publicar el primero</button></div>}
+          </div>
+        )}
+
+        {tab==='mensajes' && (
+          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 h-[70vh]">
+            <div className="rounded-[20px] bg-[#161b23] border border-[#2a323d] p-3 overflow-y-auto">
+              <h3 className="font-bold mb-3">Conversaciones</h3>
+              {profiles.filter(pr=>pr.id!==profile?.id).map(pr=>(
+                <button key={pr.id} onClick={()=>setSelectedChatUser(pr)} className={`w-full flex items-center gap-3 p-2.5 rounded-xl text-left ${selectedChatUser?.id===pr.id?'bg-[#7c5cff]/20 border border-[#7c5cff]/30':'hover:bg-[#1d242e]'}`}>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{background:pr.avatar_color}}>{pr.username[0].toUpperCase()}</div>
+                  <div className="flex-1"><p className="text-sm font-bold">{pr.username}</p><p className="text-[11px] text-[#8b97a8]">{directMsgs.filter(m=>(m.from===pr.id&&m.to===profile?.id)||(m.from===profile?.id&&m.to===pr.id)).length} msgs</p></div>
+                </button>
+              ))}
+              {profiles.length<=1 && <p className="text-xs text-[#8b97a8] p-3">No hay otros usuarios aún. Los mensajes de checkout aparecerán aquí automáticamente.</p>}
+            </div>
+            <div className="rounded-[20px] bg-[#161b23] border border-[#2a323d] flex flex-col overflow-hidden">
+              {selectedChatUser ? (
+                <>
+                  <div className="p-4 border-b border-[#2a323d] flex items-center gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold" style={{background:selectedChatUser.avatar_color}}>{selectedChatUser.username[0].toUpperCase()}</div><div><p className="font-bold text-sm">{selectedChatUser.username}</p><p className="text-xs text-[#8b97a8]">{selectedChatUser.chat_role} • {selectedChatUser.points} pts</p></div></div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {directMsgs.filter(m=>(m.from===profile?.id&&m.to===selectedChatUser.id)||(m.from===selectedChatUser.id&&m.to===profile?.id)).map(m=>(
+                      <div key={m.id} className={`flex ${m.from===profile?.id?'justify-end':''}`}><div className={`max-w-[75%] p-3 rounded-xl text-sm ${m.from===profile?.id?'bg-[#7c5cff] text-white':'bg-[#1d242e] border border-[#2a323d]'}`}><p>{m.text}</p><p className="text-[10px] opacity-70 mt-1">{new Date(m.created_at).toLocaleTimeString()}</p></div></div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+                  <div className="p-4 border-t border-[#2a323d] flex gap-2"><input value={newDirect} onChange={e=>setNewDirect(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleDirectSend()} placeholder={`Mensaje a ${selectedChatUser.username}...`} className="flex-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" /><button onClick={handleDirectSend} className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold text-sm">Enviar</button></div>
+                </>
+              ) : <div className="flex-1 flex items-center justify-center text-[#8b97a8] text-sm">Selecciona un usuario para chatear - checkout envía mensaje auto</div>}
+            </div>
           </div>
         )}
 
         {tab==='perfil' && profile && (
           <div className="max-w-3xl mx-auto space-y-4">
-            <div className="p-6 md:p-8 rounded-[24px] bg-[#161b23] border border-[#2a323d] shadow">
-              <div className="flex flex-col md:flex-row gap-6">
-                <div className="w-24 h-24 rounded-[20px] flex items-center justify-center text-3xl font-black text-white shadow-lg" style={{background:profile.avatar_color}}>{profile.username[0].toUpperCase()}</div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-3"><h2 className="text-2xl font-black">{profile.username}</h2><span className="px-2.5 py-1 rounded-full bg-[#7c5cff]/20 border border-[#7c5cff]/30 text-[11px] font-bold text-[#a78bfa]">{profile.chat_role}</span></div>
-                  <p className="text-sm text-[#8b97a8] mt-2">{profile.bio||'Miembro de Elraizer Community Spa Global'}</p>
-                  <div className="mt-4 flex gap-3"><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs"><span className="font-bold">{profile.points}</span> puntos</div><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{posts.filter(p=>p.author_id===profile.id).length} posts</div><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{products.filter(p=>p.seller_id===profile.id).length} productos</div></div>
-                </div>
-              </div>
-            </div>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="p-5 rounded-[20px] bg-[#161b23] border border-[#2a323d]"><h3 className="font-bold mb-3">Mis posts</h3><div className="space-y-2">{posts.filter(p=>p.author_id===profile.id).slice(0,5).map(p=><p key={p.id} className="text-sm text-[#8b97a8] line-clamp-1">{p.text}</p>)}</div></div>
-              <div className="p-5 rounded-[20px] bg-[#161b23] border border-[#2a323d]"><h3 className="font-bold mb-3">Mis productos</h3><div className="space-y-2">{products.filter(p=>p.seller_id===profile.id).map(p=><div key={p.id} className="flex justify-between text-sm"><span className="text-[#8b97a8]">{p.title}</span><span className="text-xs">{daysLeft(p.expires_at)}d</span></div>)}</div></div>
+            <div className="p-6 md:p-8 rounded-[24px] bg-[#161b23] border border-[#2a323d]">
+              <div className="flex gap-6"><div className="w-24 h-24 rounded-[20px] flex items-center justify-center text-3xl font-black text-white" style={{background:profile.avatar_color}}>{profile.username[0].toUpperCase()}</div><div className="flex-1"><div className="flex items-center gap-3"><h2 className="text-2xl font-black">{profile.username}</h2><span className="px-2.5 py-1 rounded-full bg-[#7c5cff]/20 border border-[#7c5cff]/30 text-[11px] font-bold text-[#a78bfa]">{profile.chat_role}</span></div><p className="text-sm text-[#8b97a8] mt-2">{profile.bio||'Miembro Spa Global'}</p><div className="mt-4 flex gap-2"><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs"><b>{profile.points}</b> puntos</div><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{posts.filter(p=>p.author_id===profile.id).length} posts</div><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{products.filter(p=>p.seller_id===profile.id).length} productos</div></div></div></div>
             </div>
           </div>
         )}
@@ -500,30 +546,28 @@ export default function App(){
         {tab==='carrito' && (
           <div className="max-w-3xl mx-auto space-y-4">
             <h1 className="text-2xl font-black">Carrito ({cart.length})</h1>
-            {cart.map(c=><div key={c.product.id} className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d] flex justify-between items-center"><div className="flex gap-3"><img src={c.product.images?.[0]?.url} className="w-16 h-16 rounded-lg object-cover bg-[#0e1116]" alt="" /><div><p className="font-bold text-sm">{c.product.title}</p><p className="text-xs text-[#8b97a8]">x{c.qty} • ${c.product.price} COP • {c.product.seller?.username}</p></div></div><button onClick={()=>setCart(cart.filter(x=>x.product.id!==c.product.id))} className="text-xs px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d]">Quitar</button></div>)}
-            {cart.length>0 ? <><div className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d]"><p className="flex justify-between font-bold">Total: <span className="text-[#00d4b1]">${cart.reduce((s,c)=>s+c.product.price*c.qty,0).toLocaleString()} COP</span></p><p className="text-[11px] text-[#8b97a8] mt-2">Al comprar se enviará mensaje automático al vendedor con tu info para coordinar pago directo</p></div><button onClick={handleCheckout} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black shadow">Checkout - Notificar vendedores</button></> : <div className="p-12 rounded-[20px] bg-[#161b23] border border-[#2a323d] text-center"><p className="text-4xl mb-3">🎒</p><p className="text-[#8b97a8]">Carrito vacío</p></div>}
-            {messages.length>0 && <div className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d]"><h3 className="font-bold text-sm mb-3">Mensajes de compra</h3>{messages.slice(0,5).map(m=><p key={m.id} className="text-xs text-[#8b97a8] mb-2">{m.text}</p>)}</div>}
+            {cart.map(c=><div key={c.product.id} className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d] flex justify-between"><div className="flex gap-3"><img src={c.product.images?.[0]?.url} className="w-16 h-16 rounded-lg object-cover bg-[#0e1116]" alt="" /><div><p className="font-bold text-sm">{c.product.title}</p><p className="text-xs text-[#8b97a8]">x{c.qty} • ${c.product.price} COP • {c.product.seller?.username}</p></div></div><button onClick={()=>setCart(cart.filter(x=>x.product.id!==c.product.id))} className="text-xs px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d]">Quitar</button></div>)}
+            {cart.length>0 ? <><div className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d]"><p className="flex justify-between font-bold">Total: <span className="text-[#00d4b1]">${cart.reduce((s,c)=>s+c.product.price*c.qty,0).toLocaleString()} COP</span></p><p className="text-[11px] text-[#8b97a8] mt-2">Checkout envía mensaje automático al vendedor con tu info para pago directo</p></div><button onClick={handleCheckout} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black">Checkout - Notificar vendedores (mensajería)</button></> : <div className="p-12 rounded-[20px] bg-[#161b23] border border-[#2a323d] text-center"><p className="text-4xl mb-3">🎒</p><p className="text-[#8b97a8]">Carrito vacío</p></div>}
           </div>
         )}
       </main>
 
       {prodModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-[24px] bg-[#161b23] border border-[#2a323d] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-lg rounded-[24px] bg-[#161b23] border border-[#2a323d] p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5"><h2 className="font-black text-lg">Publicar producto PRO</h2><button onClick={()=>setProdModal(false)} className="w-8 h-8 rounded-full bg-[#1d242e] border border-[#2a323d]">✕</button></div>
             <div className="space-y-4">
-              <input value={prodForm.title} onChange={e=>setProdForm({...prodForm, title:e.target.value})} placeholder="Título premium (ej: Diseño logo pro)" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-              <div className="flex gap-3"><input value={prodForm.price} onChange={e=>setProdForm({...prodForm, price:e.target.value})} type="number" placeholder="Precio COP (ej: 50000)" className="flex-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" /><select value={prodForm.category} onChange={e=>setProdForm({...prodForm, category:e.target.value})} className="px-3 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none">{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
-              <textarea value={prodForm.description} onChange={e=>setProdForm({...prodForm, description:e.target.value})} placeholder="Descripción profesional, materiales, entrega..." className="w-full min-h-[90px] px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-              <input value={prodForm.location} onChange={e=>setProdForm({...prodForm, location:e.target.value})} placeholder="Ubicación (ej: Armenia, Quindío)" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none" />
-              <div onDragOver={e=>{e.preventDefault(); setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={e=>{e.preventDefault(); setDragOver(false); handleFileUpload(e.dataTransfer.files,true)}} className={`border-2 border-dashed rounded-xl p-6 text-center transition ${dragOver?'border-[#7c5cff] bg-[#7c5cff]/10':'border-[#2a323d] bg-[#0e1116]'}`}>
-                <p className="text-sm font-bold">Arrastra hasta 5 fotos aquí</p><p className="text-[11px] text-[#8b97a8] mt-1">Máx 10MB cada una, drag & drop</p>
-                <button onClick={()=>prodFileRef.current?.click()} className="mt-3 px-4 py-2 rounded-xl bg-[#1d242e] border border-[#2a323d] text-xs font-bold">Seleccionar fotos</button>
+              <input value={prodForm.title} onChange={e=>setProdForm({...prodForm, title:e.target.value})} placeholder="Título" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
+              <div className="flex gap-3"><input value={prodForm.price} onChange={e=>setProdForm({...prodForm, price:e.target.value})} type="number" placeholder="Precio COP" className="flex-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" /><select value={prodForm.category} onChange={e=>setProdForm({...prodForm, category:e.target.value})} className="px-3 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm">{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
+              <textarea value={prodForm.description} onChange={e=>setProdForm({...prodForm, description:e.target.value})} placeholder="Descripción" className="w-full min-h-[90px] px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
+              <input value={prodForm.location} onChange={e=>setProdForm({...prodForm, location:e.target.value})} placeholder="Ubicación" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" />
+              <div onDragOver={e=>{e.preventDefault(); setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={e=>{e.preventDefault(); setDragOver(false); handleFileUpload(e.dataTransfer.files,true)}} className={`border-2 border-dashed rounded-xl p-6 text-center ${dragOver?'border-[#7c5cff] bg-[#7c5cff]/10':'border-[#2a323d] bg-[#0e1116]'}`}>
+                <p className="text-sm font-bold">Arrastra hasta 5 fotos</p><p className="text-[11px] text-[#8b97a8] mt-1">Máx 10MB c/u</p>
+                <button onClick={()=>prodFileRef.current?.click()} className="mt-3 px-4 py-2 rounded-xl bg-[#1d242e] border border-[#2a323d] text-xs font-bold">Seleccionar</button>
                 <input ref={prodFileRef} type="file" multiple accept="image/*" hidden onChange={e=>handleFileUpload(e.target.files,true)} />
                 {prodForm.images.length>0 && <div className="mt-4 flex gap-2 flex-wrap justify-center">{prodForm.images.map((img:any,i:number)=><div key={i} className="relative"><img src={img.url} className="w-16 h-16 rounded-lg object-cover" alt="" /><button onClick={()=>setProdForm({...prodForm, images:prodForm.images.filter((_:any,j:number)=>j!==i)})} className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs">×</button></div>)}</div>}
               </div>
-              <p className="text-[11px] text-[#8b97a8]">Expira automáticamente en 30 días, con badge Por vencer &lt;5d y contador Expira en X días. Renovables por owner/master.</p>
-              <button onClick={handlePublishProduct} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black shadow shadow-[#7c5cff]/20">Publicar en Marketplace Global</button>
+              <button onClick={handlePublishProduct} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black">Publicar - 30 días</button>
             </div>
           </div>
         </div>
@@ -531,24 +575,50 @@ export default function App(){
 
       {showMaster && profile?.chat_role==='master' && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl rounded-[24px] bg-[#161b23] border border-[#2a323d] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-black">👑 Panel Maestro Ghost - EXT3</h2><button onClick={()=>setShowMaster(false)} className="w-9 h-9 rounded-full bg-[#1d242e] border border-[#2a323d]">✕</button></div>
-            <div className="grid md:grid-cols-3 gap-4 mb-6">
-              <div className="p-4 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-xs text-[#8b97a8]">Total Usuarios</p><p className="text-xl font-black">{1}</p></div>
+          <div className="w-full max-w-5xl rounded-[24px] bg-[#161b23] border border-[#2a323d] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-black">👑 Panel Maestro Ghost - EXT3 - Control Total</h2><button onClick={()=>setShowMaster(false)} className="w-9 h-9 rounded-full bg-[#1d242e] border border-[#2a323d]">✕</button></div>
+            <div className="grid md:grid-cols-4 gap-4 mb-6">
+              <div className="p-4 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-xs text-[#8b97a8]">Usuarios</p><p className="text-xl font-black">{profiles.length||1}</p></div>
               <div className="p-4 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-xs text-[#8b97a8]">Posts</p><p className="text-xl font-black">{posts.length}</p></div>
               <div className="p-4 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-xs text-[#8b97a8]">Productos</p><p className="text-xl font-black">{products.length}</p></div>
+              <div className="p-4 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-xs text-[#8b97a8]">Chat msgs</p><p className="text-xl font-black">{chatMsgs.length}</p></div>
             </div>
-            <div className="space-y-3">
-              <h3 className="font-bold">Control Total - Ghost Mode</h3>
-              <p className="text-xs text-[#8b97a8]">Dar/quitar puntos, ban, mute, expulsar, suspender, borrar definitivo (perfil, posts, productos, comentarios, votos, mensajes, notificaciones, carrito, órdenes), editar email/pass, borrar posts/productos</p>
-              <div className="flex gap-2 flex-wrap">
-                <button onClick={()=>{ if(profile) setProfile({...profile, points:profile.points+100})}} className="px-4 py-2 rounded-xl bg-[#7c5cff] text-white text-xs font-bold">+100 pts</button>
-                <button onClick={()=>{ if(profile) setProfile({...profile, points:Math.max(0,profile.points-100)})}} className="px-4 py-2 rounded-xl bg-[#1d242e] border border-[#2a323d] text-xs">-100 pts</button>
-                <button onClick={()=>setPosts([])} className="px-4 py-2 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold">Borrar todos los posts</button>
-                <button onClick={()=>setProducts([])} className="px-4 py-2 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold">Borrar todos los productos</button>
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-bold mb-3">👥 Usuarios - Control Total (dar/quitar puntos, ban, mute, expulsar, suspender, borrar definitivo perfil/posts/productos/comentarios/votos/mensajes/notificaciones/carrito/ordenes, editar email/pass)</h3>
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {[profile, ...profiles.filter(p=>p.id!==profile.id)].filter(Boolean).map((u:any)=>(
+                    <div key={u.id} className="flex items-center justify-between p-3 rounded-xl bg-[#0e1116] border border-[#2a323d]">
+                      <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{background:u.avatar_color}}>{u.username[0].toUpperCase()}</div><div><p className="text-sm font-bold">{u.username} {u.banned&&'(BANEADO)'} {u.muted&&'(MUTEADO)'}</p><p className="text-[11px] text-[#8b97a8]">{u.chat_role} • {u.points} pts • {u.email||'local'}</p></div></div>
+                      <div className="flex gap-1 flex-wrap">
+                        <button onClick={()=>{ const upd=profiles.map(p=>p.id===u.id?{...p, points:p.points+100}:p); setProfiles(upd); if(u.id===profile?.id) setProfile({...u, points:u.points+100}) }} className="px-2 py-1 rounded bg-[#7c5cff] text-white text-[10px]">+100</button>
+                        <button onClick={()=>{ const upd=profiles.map(p=>p.id===u.id?{...p, points:Math.max(0,p.points-100)}:p); setProfiles(upd); if(u.id===profile?.id) setProfile({...u, points:Math.max(0,u.points-100)}) }} className="px-2 py-1 rounded bg-[#1d242e] border border-[#2a323d] text-[10px]">-100</button>
+                        <button onClick={()=>{ const upd=profiles.map(p=>p.id===u.id?{...p, banned:!p.banned}:p); setProfiles(upd) }} className="px-2 py-1 rounded bg-[#ffb020]/20 text-[#ffb020] text-[10px]">{u.banned?'Unban':'Ban'}</button>
+                        <button onClick={()=>{ const upd=profiles.map(p=>p.id===u.id?{...p, muted:!p.muted}:p); setProfiles(upd) }} className="px-2 py-1 rounded bg-[#00d4b1]/20 text-[#00d4b1] text-[10px]">{u.muted?'Unmute':'Mute'}</button>
+                        <button onClick={()=>setEditUserModal(u)} className="px-2 py-1 rounded bg-[#3b82f6]/20 text-[#3b82f6] text-[10px]">Editar email/pass</button>
+                        <button onClick={()=>{ if(confirm('Borrar definitivo '+u.username+'? Borra perfil, posts, productos, comentarios, votos, mensajes, notificaciones, carrito, ordenes')){ setProfiles(profiles.filter(p=>p.id!==u.id)); setPosts(posts.filter(p=>p.author_id!==u.id)); setProducts(products.filter(p=>p.seller_id!==u.id)); setChatMsgs(chatMsgs.filter(c=>c.user_id!==u.id)); setDirectMsgs(directMsgs.filter(d=>d.from!==u.id&&d.to!==u.id)) } }} className="px-2 py-1 rounded bg-red-500/20 text-red-400 text-[10px]">Borrar definitivo</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div><h4 className="font-bold text-sm mb-2">Posts - borrar</h4><div className="space-y-1 max-h-[150px] overflow-y-auto">{posts.map(p=><div key={p.id} className="flex justify-between p-2 rounded bg-[#0e1116] border border-[#2a323d] text-xs"><span className="line-clamp-1">{p.text}</span><button onClick={()=>setPosts(posts.filter(x=>x.id!==p.id))} className="text-red-400 ml-2">x</button></div>)}</div></div>
+                <div><h4 className="font-bold text-sm mb-2">Productos - borrar</h4><div className="space-y-1 max-h-[150px] overflow-y-auto">{products.map(p=><div key={p.id} className="flex justify-between p-2 rounded bg-[#0e1116] border border-[#2a323d] text-xs"><span>{p.title}</span><button onClick={()=>setProducts(products.filter(x=>x.id!==p.id))} className="text-red-400 ml-2">x</button></div>)}</div></div>
+                <div><h4 className="font-bold text-sm mb-2">Chat global - borrar</h4><div className="space-y-1 max-h-[150px] overflow-y-auto">{chatMsgs.map(c=><div key={c.id} className="flex justify-between p-2 rounded bg-[#0e1116] border border-[#2a323d] text-xs"><span className="line-clamp-1">{c.text}</span><button onClick={()=>setChatMsgs(chatMsgs.filter(x=>x.id!==c.id))} className="text-red-400 ml-2">x</button></div>)}</div></div>
+              </div>
+              <div className="flex gap-2 flex-wrap"><button onClick={()=>{ setPosts([]); setProducts([]); setChatMsgs([]); setDirectMsgs([]); setCart([]) }} className="px-4 py-2 rounded-xl bg-red-500 text-white text-xs font-bold">Borrar todo (posts, productos, chat, mensajes, carrito)</button><button onClick={()=>{ if(profile) setProfile({...profile, points:profile.points+1000}) }} className="px-4 py-2 rounded-xl bg-[#7c5cff] text-white text-xs font-bold">+1000 pts master</button></div>
             </div>
-            <p className="text-[10px] text-[#8b97a8] mt-6">Acceso: Ctrl+Shift+A o 5 clicks en ◈ - Crown solo visible hover master - Sin rastro público de cuenta maestra</p>
+            <p className="text-[10px] text-[#8b97a8] mt-6">Ghost mode: sin rastro público cuenta maestra EXT3. Crown 👑 solo visible hover master. Acceso Ctrl+Shift+A o 5 clicks en ◈. Master: Ext3@elraizer.com / Elraizer5374e*</p>
+          </div>
+        </div>
+      )}
+
+      {editUserModal && (
+        <div className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-[20px] bg-[#161b23] border border-[#2a323d] p-6">
+            <div className="flex justify-between mb-4"><h3 className="font-bold">Editar {editUserModal.username} - email/pass</h3><button onClick={()=>setEditUserModal(null)} className="w-8 h-8 rounded-full bg-[#1d242e]">✕</button></div>
+            <div className="space-y-3"><input value={editEmail} onChange={e=>setEditEmail(e.target.value)} placeholder="Nuevo email" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" /><input value={editPass} onChange={e=>setEditPass(e.target.value)} type="password" placeholder="Nueva contraseña" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm" /><button onClick={()=>{ const upd=profiles.map(p=>p.id===editUserModal.id?{...p, email:editEmail||p.email}:p); setProfiles(upd); setEditUserModal(null); setEditEmail(''); setEditPass(''); alert('Editado') }} className="w-full py-3 rounded-xl bg-[#7c5cff] text-white font-bold">Guardar email/pass</button></div>
           </div>
         </div>
       )}
