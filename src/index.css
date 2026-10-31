@@ -1,4 +1,4 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-:root{color-scheme:dark} body{background:#0e1116;color:#e9eef5;font-family:system-ui}
+:root{color-scheme:dark} body{background:#0e1116;color:#e9eef5}
