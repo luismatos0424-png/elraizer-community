@@ -85,15 +85,15 @@ export default function App(){
       return
     }
     supabase.auth.getSession().then(({data})=>setSession(data.session))
-    const {data:listener}=supabase.auth.onAuthStateChange(async(_,s)=>{
-      setSession(s)
-      if(s?.user){
-        const {data:existing}=await supabase.from('profiles').select('*').eq('id', s.user.id).single()
+    const {data:listener}=supabase.auth.onAuthStateChange(async(_,[STRIPPED]
+      setSession(sess)
+      if(sess?.user){
+        const {data:existing}=await supabase.from('profiles').select('*').eq('id', sess.user.id).single()
         if(!existing){
-          const isMaster=s.user.email?.toLowerCase()==='ext3@elraizer.com'
-          const username=isMaster?MASTER_USER:(s.user.email?.split('@')[0]||'Usuario')
+          const isMaster=sess.user.email?.toLowerCase()==='ext3@elraizer.com'
+          const username=isMaster?MASTER_USER:(sess.user.email?.split('@')[0]||'Usuario')
           const {data:newProf}=await supabase.from('profiles').insert({
-            id:s.user.id, username, avatar_color:isMaster?'#ffb020':'#7c5cff',
+            id:sess.user.id, username, avatar_color:isMaster?'#ffb020':'#7c5cff',
             role:isMaster?'admin':'user', chat_role:isMaster?'master':'nuevo',
             bio:isMaster?'Fundador':'', points:isMaster?999:0
           }).select().single()
