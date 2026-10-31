@@ -104,8 +104,11 @@ export default function App(){
 
   const handleLogoClick=()=>{ const c=logoClicks+1; setLogoClicks(c); if(c>=5&&profile?.chat_role==='master'){ setShowMaster(true); setLogoClicks(0) } setTimeout(()=>setLogoClicks(0),2000) }
 
-  // handleGoogle eliminado por peticion - boton Google removido
-  const handleGoogle=async()=>{}
+  const handleGoogle=async()=>{
+    if(!isSupabaseConfigured){ alert('Configura Supabase > Auth > Providers > Google con Client ID/Secret de Google Cloud. Redirect: https://TU_PROYECTO.supabase.co/auth/v1/callback'); return }
+    const {error}=await supabase.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: window.location.origin } })
+    if(error) alert(error.message)
+  }
 
   const handleEmailAuth=async()=>{
     if(!isSupabaseConfigured){
@@ -210,8 +213,8 @@ export default function App(){
               <button onClick={()=>setAuthMode('login')} className={`flex-1 py-2 rounded-lg text-sm font-semibold ${authMode==='login'?'bg-[#7c5cff] text-white':'bg-[#1d242e] text-[#8b97a8]'}`}>Login</button>
               <button onClick={()=>setAuthMode('register')} className={`flex-1 py-2 rounded-lg text-sm font-semibold ${authMode==='register'?'bg-[#7c5cff] text-white':'bg-[#1d242e] text-[#8b97a8]'}`}>Registro</button>
             </div>
-            <!-- Boton Google eliminado por peticion del maestro -->
-            <div className="my-2 text-center text-xs text-[#8b97a8]">Acceso con email</div>
+            <button onClick={handleGoogle} className="w-full py-3 rounded-xl bg-white text-black font-semibold flex items-center justify-center gap-2">G Continuar con Google</button>
+            <div className="my-4 text-center text-xs text-[#8b97a8]">o con email</div>
             {!onboarding ? (
               <>
                 <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" className="w-full mb-3 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />

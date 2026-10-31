@@ -1,6 +1,6 @@
 # ◈ Elraizer Community - Modo Fantasma PRO
 
-Comunidad + Marketplace con expiracion 30 dias, control maestro total y Autenticacion email (Google removido).
+Comunidad + Marketplace con expiracion 30 dias, control maestro total y Google OAuth real.
 
 ## Deploy Rapido
 1. npm install
