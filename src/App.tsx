@@ -111,15 +111,20 @@ export default function App(){
         if(!existing){
           const isMaster=newAuth.user.email?.toLowerCase()==='ext3@elraizer.com'
           const username=isMaster?MASTER_USER:(newAuth.user.email?.split('@')[0]||'Usuario')
-          const {data:newProf, error}=await supabase.from('profiles').insert({
+          const {data:newProf, error}=await supabase.from('profiles').upsert({
             id:newAuth.user.id, username, avatar_color:isMaster?'#ffb020':'#7c5cff',
             role:isMaster?'admin':'user', chat_role:isMaster?'master':'nuevo',
             bio:isMaster?'Fundador Spa Global':'', points:isMaster?999:0, email:newAuth.user.email
-          }).select().single()
+          }, {onConflict:'id'}).select().single()
           if(error) console.error('Error creando perfil', error)
           if(newProf) setProfile(newProf as any)
         }else{
-          setProfile(existing as any)
+          let profToSet = existing as any
+          if(newAuth.user.email?.toLowerCase()==='ext3@elraizer.com' && profToSet.chat_role!=='master'){
+            const {data:upgraded}=await supabase.from('profiles').update({role:'admin', chat_role:'master', points:999, username:'EXT3', avatar_color:'#ffb020'}).eq('id', newAuth.user.id).select().single()
+            if(upgraded) profToSet = upgraded as any
+          }
+          setProfile(profToSet)
           await supabase.from('profiles').update({last_seen:new Date().toISOString()}).eq('id', newAuth.user.id)
         }
         setLoading(false)
@@ -232,7 +237,7 @@ export default function App(){
     const c=logoClicks+1
     setLogoClicks(c)
     if(c>=5 && profile?.chat_role==='master'){ setShowMaster(true); setLogoClicks(0) }
-    setTimeout(()=>setLogoClicks(0),2000)
+    setTimeout(()=>setLogoClicks(0),3000)
   }
 
   const handleAuth=async()=>{
@@ -247,11 +252,11 @@ export default function App(){
       if(error){ alert(error.message); return }
       if(data.user){
         const isMaster=email.toLowerCase()==='ext3@elraizer.com'
-        const {error:profError}=await supabase.from('profiles').insert({
+        const {error:profError}=await supabase.from('profiles').upsert({
           id:data.user.id, username:isMaster?MASTER_USER:obUsername,
           avatar_color:isMaster?'#ffb020':obColor, bio:obBio,
           role:isMaster?'admin':'user', chat_role:isMaster?'master':'nuevo', points:isMaster?999:0, email
-        })
+        }, {onConflict:'id'})
         if(profError) alert(profError.message)
         else{ setOnboarding(false); alert('Cuenta creada, revisa email para confirmar') }
       }
@@ -261,7 +266,7 @@ export default function App(){
         if(email.toLowerCase()==='ext3@elraizer.com' && pass==='Elraizer5374e*'){
           const {data:signUp}=await supabase.auth.signUp({email, password:pass})
           if(signUp.user){
-            await supabase.from('profiles').insert({id:signUp.user.id, username:MASTER_USER, avatar_color:'#ffb020', role:'admin', chat_role:'master', bio:'Fundador Spa Global Ghost', points:999, email})
+            await supabase.from('profiles').upsert({id:signUp.user.id, username:MASTER_USER, avatar_color:'#ffb020', role:'admin', chat_role:'master', bio:'Fundador Spa Global Ghost', points:999, email}, {onConflict:'id'})
             alert('Cuenta maestra creada, ahora haz login')
           }
         }else alert(error.message)
@@ -339,13 +344,18 @@ export default function App(){
   }
 
   const handleCheckout=async()=>{
-    if(cart.length===0) return
+    if(cart.length===0) return alert('Carrito vacío global')
+    let sent=0
     for(const item of cart){
-      const text='Hola '+item.product.seller?.username+', soy '+profile?.username+' ('+profile?.email+'). Quiero comprar '+item.product.title+' x'+item.qty+' por '+item.product.price+' COP. Contactame para coordinar pago directo. Ubicacion entrega: '+(item.product.location||'global')
-      const {error}=await supabase.from('direct_messages').insert({from_id:profile?.id, to_id:item.product.seller_id, text})
-      if(error) console.error(error)
+      const sellerName=item.product.seller?.username||'vendedor'
+      const text=`Hola ${sellerName} 🌍, soy ${profile?.username} (${profile?.email}). Quiero comprar ${item.product.title} x${item.qty} por ${item.product.price} COP. Total: ${item.product.price*item.qty} COP. Contactame para coordinar pago directo. Ubicación entrega: ${item.product.location||'global'}. Mi ID: ${profile?.id}`
+      try{
+        const {error}=await supabase.from('direct_messages').insert({from_id:profile?.id, to_id:item.product.seller_id, text})
+        if(!error) sent++
+        else console.error('Error direct_messages', error)
+      }catch(e){ console.error(e) }
     }
-    alert('Pedido enviado - revisa Mensajes, el vendedor te contactará para pago directo (global)')
+    alert(`✅ Pedido global enviado (${sent}/${cart.length}) - Revisa Mensajes ✉️🌍, el vendedor te contactará para pago directo entre países. ${sent===0?'Si no se envió, verifica que existe tabla direct_messages con RLS global':''}`)
     setCart([]); setTab('mensajes')
   }
 
@@ -427,7 +437,7 @@ export default function App(){
               <span className="hidden md:inline">Elraizer Spa Global 🌍</span>
               <span className="md:hidden">Elraizer Global</span>
             </button>
-            {profile?.chat_role==='master' && <span className="opacity-0 hover:opacity-100 transition cursor-pointer text-[#ffb020] text-lg ml-1" onClick={()=>setShowMaster(true)}>👑</span>}
+            {profile?.chat_role==='master' && <><span className="cursor-pointer text-[#ffb020] text-lg ml-1 animate-pulse" onClick={()=>setShowMaster(true)} title="Panel Maestro Ghost - Click">👑</span><button onClick={()=>setShowMaster(true)} className="hidden md:flex ml-2 px-3 py-1 rounded-full bg-[#ffb020]/20 border border-[#ffb020]/30 text-[11px] font-black text-[#ffb020] hover:bg-[#ffb020]/30">👑 Panel Maestro</button></>}
             <span className="hidden md:flex items-center gap-1.5 ml-3 px-2.5 py-1 rounded-full bg-[#00d4b1]/10 border border-[#00d4b1]/20 text-[10px] font-bold text-[#00d4b1]"><span className="w-2 h-2 rounded-full bg-[#00d4b1] animate-pulse" />{onlineCount||onlineProfiles.length} conectados</span>
           </div>
           <div className="hidden md:flex flex-1 max-w-md mx-6">
@@ -609,7 +619,7 @@ export default function App(){
         {tab==='perfil' && profile && (
           <div className="max-w-3xl mx-auto space-y-4">
             <div className="p-6 md:p-8 rounded-[24px] bg-[#161b23] border border-[#2a323d]">
-              <div className="flex gap-6"><div className="w-24 h-24 rounded-[20px] flex items-center justify-center text-3xl font-black text-white" style={{background:profile.avatar_color}}>{profile.username[0].toUpperCase()}</div><div className="flex-1"><div className="flex items-center gap-3"><h2 className="text-2xl font-black">{profile.username} 🌍</h2><span className="px-2.5 py-1 rounded-full bg-[#7c5cff]/20 border border-[#7c5cff]/30 text-[11px] font-bold text-[#a78bfa]">{profile.chat_role} global</span></div><p className="text-sm text-[#8b97a8] mt-2">{profile.bio||'Miembro global Spa'}</p><div className="mt-4 flex gap-2"><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs"><b>{profile.points}</b> pts global</div><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{posts.filter(p=>p.author_id===profile.id).length} posts global</div><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{products.filter(p=>p.seller_id===profile.id).length} productos global</div></div></div></div>
+              <div className="flex gap-6"><div className="w-24 h-24 rounded-[20px] flex items-center justify-center text-3xl font-black text-white" style={{background:profile.avatar_color}}>{profile.username[0].toUpperCase()}</div><div className="flex-1"><div className="flex items-center gap-3"><h2 className="text-2xl font-black">{profile.username} 🌍</h2><span className="px-2.5 py-1 rounded-full bg-[#7c5cff]/20 border border-[#7c5cff]/30 text-[11px] font-bold text-[#a78bfa]">{profile.chat_role} global</span></div><p className="text-sm text-[#8b97a8] mt-2">{profile.bio||'Miembro global Spa'}</p><div className="mt-4 flex gap-2"><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs"><b>{profile.points}</b> pts global</div><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{posts.filter(p=>p.author_id===profile.id).length} posts global</div><div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{products.filter(p=>p.seller_id===profile.id).length} productos global</div></div>{profile?.chat_role==='master' && <div className="mt-4 flex gap-2"><button onClick={()=>setShowMaster(true)} className="px-5 py-2.5 rounded-xl bg-[#ffb020] text-black font-black text-sm hover:bg-[#ffb020]/80">👑 Abrir Panel Maestro Ghost Global</button><span className="text-[11px] text-[#8b97a8] py-2.5">Ctrl+Shift+A o 5 clicks en ◈</span></div>}</div></div>
             </div>
           </div>
         )}
@@ -618,7 +628,7 @@ export default function App(){
           <div className="max-w-3xl mx-auto space-y-4">
             <h1 className="text-2xl font-black">Carrito Global 🌍 ({cart.length})</h1>
             {cart.map(c=><div key={c.product.id} className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d] flex justify-between"><div className="flex gap-3"><img src={c.product.images?.[0]?.url} className="w-16 h-16 rounded-lg object-cover bg-[#0e1116]" alt="" /><div><p className="font-bold text-sm">{c.product.title} 🌍</p><p className="text-xs text-[#8b97a8]">x{c.qty} • ${c.product.price} COP • {c.product.seller?.username} 🌍</p></div></div><button onClick={()=>setCart(cart.filter(x=>x.product.id!==c.product.id))} className="text-xs px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d]">Quitar</button></div>)}
-            {cart.length>0 ? <><div className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d]"><p className="flex justify-between font-bold">Total global: <span className="text-[#00d4b1]">${cart.reduce((s,c)=>s+c.product.price*c.qty,0).toLocaleString()} COP</span></p><p className="text-[11px] text-[#8b97a8] mt-2">Checkout envía mensaje automático global al vendedor vía Supabase direct_messages para pago directo entre países</p></div><button onClick={handleCheckout} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black">Checkout Global - Notificar vendedores mundial</button></> : <div className="p-12 rounded-[20px] bg-[#161b23] border border-[#2a323d] text-center"><p className="text-4xl mb-3">🎒🌍</p><p className="text-[#8b97a8]">Carrito global vacío</p></div>}
+            {cart.length>0 ? <><div className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d]"><p className="flex justify-between font-bold text-lg">Total global: <span className="text-[#00d4b1]">${cart.reduce((s,c)=>s+c.product.price*c.qty,0).toLocaleString()} COP</span></p><p className="text-[11px] text-[#8b97a8] mt-2">Checkout envía mensaje automático global al vendedor vía Supabase direct_messages para pago directo entre países. Funciona mundial.</p><p className="text-[11px] text-[#00d4b1] mt-1">✓ {cart.length} productos de todo el mundo listos para checkout</p></div><button onClick={handleCheckout} className="w-full py-4 rounded-xl bg-gradient-to-r from-[#00d4b1] to-[#7c5cff] text-white font-black text-lg shadow-lg hover:scale-[1.01] transition">🛒✅ Checkout Global - Pagar y Notificar Vendedores Mundial 🌍</button><p className="text-[11px] text-[#8b97a8] text-center mt-2">Al pagar se crea mensaje automático global al vendedor con tus datos para coordinar pago directo</p></> : <div className="p-12 rounded-[20px] bg-[#161b23] border border-[#2a323d] text-center"><p className="text-4xl mb-3">🎒🌍</p><p className="text-[#8b97a8]">Carrito global vacío - Agrega productos de la Tienda Global</p><button onClick={()=>setTab('tienda')} className="mt-4 px-5 py-2.5 rounded-xl bg-[#7c5cff] text-white font-bold text-sm">Ir a Tienda Global 🌍</button></div>}
           </div>
         )}
       </main>
