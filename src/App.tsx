@@ -48,14 +48,9 @@ type DirectMsg = { id: string; from_id: string; to_id: string; text: string; cre
 
 const MASTER_USER = 'EXT3'
 const CATEGORIES = ['Diseño','Desarrollo','Electrónica','Ropa','Servicios','Hogar','Otros']
-const EMOJIS = ['😀','😂','😍','🥺','😎','🤔','👍','👏','🔥','❤️','💯','🎉','🙏','😅','🤣','😭','🥰','😱','🤩','👌','💪','✨','','🚀','💬','⚠️','✅','❌','👑','🛡️']
+const EMOJIS = ['😀','😂','😍','🥺','😎','🤔','👍','👏','🔥','❤️','💯','🎉','🙏','😅','🤣','😭','🥰','😱','🤩','👌','💪','✨','🚀','💬','⚠️','✅','❌','👑','🛡️']
 const COLORS = ['#7c5cff','#00d4b1','#ffb020','#ff5470','#22c55e','#3b82f6','#ec4899','#f59e0b']
-const RANKS = [
-  {name:'Novato', min:0, max:99, color:'#8b97a8'},
-  {name:'Colaborador', min:100, max:499, color:'#00d4b1'},
-  {name:'Veterano', min:500, max:999, color:'#3b82f6'},
-  {name:'Maestro', min:1000, max:999999, color:'#ffb020'}
-]
+const RANKS = [{name:'Novato', min:0, max:99, color:'#8b97a8'},{name:'Colaborador', min:100, max:499, color:'#00d4b1'},{name:'Veterano', min:500, max:999, color:'#3b82f6'},{name:'Maestro', min:1000, max:999999, color:'#ffb020'}]
 const getRank = (pts:number) => RANKS.find(r=>pts>=r.min && pts<=r.max) || RANKS[0]
 const CHAT_ROLES = ['nuevo','colaborador','veterano','antiguo','moderador','maestro','master'] as const
 
@@ -96,6 +91,7 @@ export default function App(){
   const [showEmojiPicker,setShowEmojiPicker]=useState(false)
   const [loading,setLoading]=useState(true)
   const fileInputRef=useRef<HTMLInputElement>(null)
+  const avatarFileRef=useRef<HTMLInputElement>(null)
   const prodFileRef=useRef<HTMLInputElement>(null)
   const chatEndRef=useRef<HTMLDivElement>(null)
 
@@ -296,12 +292,11 @@ export default function App(){
   const handlePublish=async()=>{
     if(!newPost.trim()&&attachments.length===0) return
     if(profile?.banned){ alert('Baneado'); return }
-    // Límite diario 10 pts
     const today = new Date().toISOString().split('T')[0]
     const {data:todayPosts} = await supabase.from('posts').select('id').eq('author_id', profile?.id).gte('created_at', today+'T00:00:00')
     const {data:todayChats} = await supabase.from('chat_messages').select('id').eq('user_id', profile?.id).gte('created_at', today+'T00:00:00')
     const dailyCount = (todayPosts?.length||0)+(todayChats?.length||0)
-    if(dailyCount>=10 && profile?.chat_role!=='master'){ alert('⚠️ Límite diario de 10 puntos alcanzado (Novato/Colaborador/Veterano/Maestro). Vuelve mañana para seguir ganando puntos. Los moderadores y master no tienen límite.'); }
+    if(dailyCount>=10 && profile?.chat_role!=='master'){ alert('⚠️ Límite diario 10 pts alcanzado. Vuelve mañana. Moderadores y master sin límite.'); }
     const {data,error}=await supabase.from('posts').insert({author_id:profile?.id, text:newPost, tags:newPost.match(/#\w+/g)||[], media:attachments, likes:[]}).select().single()
     if(error) alert(error.message)
     else{
@@ -318,15 +313,12 @@ export default function App(){
   const handleChatSend=async()=>{
     if(!newChat.trim()) return
     if(profile?.banned){ alert('Baneado'); return }
-    if(profile?.muted){ alert('🔇 Muteado por moderador - no puedes escribir en chat hasta que te desmuteen'); return }
-    const bannedWords = ['spam','xxx','porn'];
-    const lower = newChat.toLowerCase();
-    if(bannedWords.some(w=>lower.includes(w)) && profile?.chat_role!=='master'){ alert('⚠️ Mensaje bloqueado por filtro anti-spam/insultos. Moderadores revisan el chat.'); return }
+    if(profile?.muted){ alert('🔇 Muteado por moderador - no puedes escribir hasta que te desmuteen'); return }
     const today = new Date().toISOString().split('T')[0]
     const {data:todayPosts} = await supabase.from('posts').select('id').eq('author_id', profile?.id).gte('created_at', today+'T00:00:00')
     const {data:todayChats} = await supabase.from('chat_messages').select('id').eq('user_id', profile?.id).gte('created_at', today+'T00:00:00')
     const dailyCount = (todayPosts?.length||0)+(todayChats?.length||0)
-    if(dailyCount>=10 && profile?.chat_role!=='master' && profile?.chat_role!=='moderador'){ alert('⚠️ Límite diario 10 pts alcanzado. Rango: '+getRank(profile?.points||0).name+' ('+profile?.points+' pts). Vuelve mañana. Moderadores y master sin límite.'); }
+    if(dailyCount>=10 && profile?.chat_role!=='master' && profile?.chat_role!=='moderador'){ alert('⚠️ Límite diario 10 pts alcanzado. Rango: '+getRank(profile?.points||0).name+' ('+profile?.points+' pts). Vuelve mañana.'); }
     const {error}=await supabase.from('chat_messages').insert({user_id:profile?.id, text:newChat})
     if(error) alert(error.message)
     else{
@@ -380,14 +372,13 @@ export default function App(){
     let sent=0
     for(const item of cart){
       const sellerName=item.product.seller?.username||'vendedor'
-      const text=`Hola ${sellerName}, soy ${profile?.username} (${profile?.email}). Quiero comprar ${item.product.title} x${item.qty} por ${item.product.price} COP. Total: ${item.product.price*item.qty} COP. Contactame para coordinar pago directo. Ubicación entrega: ${item.product.location||'global'}. Mi ID: ${profile?.id}`
+      const text=`Hola ${sellerName}, soy ${profile?.username} (${profile?.email}). Quiero comprar ${item.product.title} x${item.qty} por ${item.product.price} COP. Total: ${item.product.price*item.qty} COP. Contactame para coordinar pago directo. Ubicación: ${item.product.location||'No especificada'}. Mi ID: ${profile?.id}`
       try{
         const {error}=await supabase.from('direct_messages').insert({from_id:profile?.id, to_id:item.product.seller_id, text})
         if(!error) sent++
-        else console.error('Error direct_messages', error)
       }catch(e){ console.error(e) }
     }
-    alert(`✅ Pedido enviado (${sent}/${cart.length}) - Revisa Mensajes ✉️, el vendedor te contactará para pago directo entre países. ${sent===0?'Si no se envió, verifica que existe tabla direct_messages con RLS':''}`)
+    alert(`✅ Pedido enviado (${sent}/${cart.length}) - Revisa Mensajes, el vendedor te contactará para pago directo.`)
     setCart([]); setTab('mensajes')
   }
 
@@ -469,7 +460,7 @@ export default function App(){
               <span className="hidden md:inline">Elraizer Spa</span>
               <span className="md:hidden">Elraizer</span>
             </button>
-            {profile?.chat_role==='master' && <><span className="cursor-pointer text-[#ffb020] text-lg ml-1 animate-pulse" onClick={()=>setShowMaster(true)} title="Panel Maestro Ghost - Click">👑</span><button onClick={()=>setShowMaster(true)} className="hidden md:flex ml-2 px-3 py-1 rounded-full bg-[#ffb020]/20 border border-[#ffb020]/30 text-[11px] font-black text-[#ffb020] hover:bg-[#ffb020]/30">👑 Panel Maestro</button></>}
+            {profile?.chat_role==='master' && <><span className="cursor-pointer text-[#ffb020] text-lg ml-1 animate-pulse" onClick={()=>setShowMaster(true)} title="Panel Maestro - Click">👑</span><button onClick={()=>setShowMaster(true)} className="hidden md:flex ml-2 px-3 py-1 rounded-full bg-[#ffb020]/20 border border-[#ffb020]/30 text-[11px] font-black text-[#ffb020] hover:bg-[#ffb020]/30">👑 Panel Maestro</button></>}
             <span className="hidden md:flex items-center gap-1.5 ml-3 px-2.5 py-1 rounded-full bg-[#00d4b1]/10 border border-[#00d4b1]/20 text-[10px] font-bold text-[#00d4b1]"><span className="w-2 h-2 rounded-full bg-[#00d4b1] animate-pulse" />{onlineCount||onlineProfiles.length} conectados</span>
           </div>
           <div className="hidden md:flex flex-1 max-w-md mx-6">
@@ -493,9 +484,9 @@ export default function App(){
       <div className="sticky top-[60px] z-20 backdrop-blur-xl border-b bg-[#161b23]/80" style={{borderColor:'#2a323d'}}>
         <div className="max-w-[1300px] mx-auto px-2 flex gap-1 overflow-x-auto">
           <button onClick={()=>setTab('inicio')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='inicio'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>🏠 Inicio</button>
-          <button onClick={()=>setTab('chat')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='chat'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>💬Chat {chatMsgs.length} • {onlineCount||onlineProfiles.length} online</button>
+          <button onClick={()=>setTab('chat')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='chat'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>💬 Chat {chatMsgs.length} • {onlineCount||onlineProfiles.length} online</button>
           <button onClick={()=>setTab('tienda')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='tienda'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>🛒 Tienda {products.length}</button>
-          <button onClick={()=>setTab('mensajes')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='mensajes'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>✉️Mensajes {directMsgs.length}</button>
+          <button onClick={()=>setTab('mensajes')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='mensajes'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>✉️ Mensajes {directMsgs.length}</button>
           <button onClick={()=>setTab('perfil')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='perfil'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>👤 Perfil</button>
           <button onClick={()=>setTab('carrito')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${tab==='carrito'?'border-[#7c5cff] text-white':'border-transparent text-[#8b97a8]'}`}>🎒 Carrito {cart.length}</button>
         </div>
@@ -536,7 +527,7 @@ export default function App(){
             </div>
             <div className="space-y-4">
               <div className="p-4 rounded-[20px] bg-[#161b23] border border-[#2a323d]">
-                <h3 className="font-bold mb-3">Conectados ahora ({onlineProfiles.length}) - Realtime</h3>
+                <h3 className="font-bold mb-3"> Conectados ahora ({onlineProfiles.length}) - Realtime</h3>
                 <div className="space-y-2 max-h-[200px] overflow-y-auto">
                   {profiles.slice(0,10).map(pr=>{
                     const isOnline=onlineProfiles.some(o=>o.id===pr.id) || onlineUsers[pr.id]
@@ -553,9 +544,9 @@ export default function App(){
         {tab==='chat' && (
           <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
             <div className="rounded-[20px] bg-[#161b23] border border-[#2a323d] overflow-hidden flex flex-col h-[75vh]">
-              <div className="p-4 border-b border-[#2a323d] flex justify-between items-center"><h2 className="font-black">💬Chat Realtime - Elraizer World</h2><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#00d4b1] animate-pulse" /><span className="text-xs text-[#8b97a8]">{onlineCount||onlineProfiles.length} conectados • {chatMsgs.length} msgs • Supabase Realtime</span></div></div>
+              <div className="p-4 border-b border-[#2a323d] flex justify-between items-center"><h2 className="font-black">💬 Chat Realtime - Elraizer World</h2><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#00d4b1] animate-pulse" /><span className="text-xs text-[#8b97a8]">{onlineCount||onlineProfiles.length} conectados • {chatMsgs.length} msgs • Supabase Realtime</span></div></div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                                {chatMsgs.map(m=>{
+                {chatMsgs.map(m=>{
                   const isOwn = m.user_id===profile?.id
                   const isMod = profile?.chat_role==='moderador' || profile?.chat_role==='master' || profile?.role==='admin'
                   const canModerate = isMod && m.user_id!==profile?.id
@@ -565,32 +556,23 @@ export default function App(){
                     <div className={`flex-1 flex flex-col ${isOwn?'items-end':''}`}>
                       <div className={`flex gap-2 items-center flex-wrap ${isOwn?'flex-row-reverse':''}`}>
                         <span className="text-sm font-bold">{m.user?.username}</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${m.user?.chat_role==='moderador'?'bg-[#00d4b1]/20 border-[#00d4b1]/30 text-[#00d4b1]':m.user?.chat_role==='master'?'bg-[#ffb020]/20 border-[#ffb020]/30 text-[#ffb020]':'bg-[#1d242e] border-[#2a323d] text-[#8b97a8]'}`}>
-                          {m.user?.chat_role==='moderador'?'🛡️ moderador':m.user?.chat_role==='master'?'👑 master':m.user?.chat_role} • {getRank(m.user?.points||0).name}
-                        </span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${m.user?.chat_role==='moderador'?'bg-[#00d4b1]/20 border-[#00d4b1]/30 text-[#00d4b1]':m.user?.chat_role==='master'?'bg-[#ffb020]/20 border-[#ffb020]/30 text-[#ffb020]':'bg-[#1d242e] border-[#2a323d] text-[#8b97a8]'}`}>{m.user?.chat_role==='moderador'?'🛡️ moderador':m.user?.chat_role==='master'?'👑 master':m.user?.chat_role} • {getRank(m.user?.points||0).name}</span>
                         <span className="text-[10px] text-[#8b97a8]">{new Date(m.created_at).toLocaleTimeString()}</span>
                       </div>
-                      <div className={`mt-1 max-w-[75%] p-3 rounded-2xl text-sm break-words ${isOwn?'bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white rounded-br-sm':'bg-[#1d242e] border border-[#2a323d] rounded-bl-sm'}`}>
-                        <p>{m.text}</p>
-                      </div>
+                      <div className={`mt-1 max-w-[75%] p-3 rounded-2xl text-sm break-words ${isOwn?'bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white rounded-br-sm':'bg-[#1d242e] border border-[#2a323d] rounded-bl-sm'}`}><p>{m.text}</p></div>
                       {canModerate && <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition"><button onClick={async()=>{ if(confirm('Borrar mensaje de '+m.user?.username+'?')){ await supabase.from('chat_messages').delete().eq('id', m.id); setChatMsgs(chatMsgs.filter(x=>x.id!==m.id)) } }} className="w-6 h-6 rounded-full bg-red-500/20 border border-red-500/30 text-[10px]">🗑️</button><button onClick={async()=>{ if(confirm('Mutear a '+m.user?.username+'?')){ await supabase.from('profiles').update({muted:true}).eq('id', m.user_id) } }} className="w-6 h-6 rounded-full bg-[#ffb020]/20 border border-[#ffb020]/30 text-[10px]">🔇</button><button onClick={async()=>{ if(confirm('Banear a '+m.user?.username+'?')){ await supabase.from('profiles').update({banned:true}).eq('id', m.user_id) } }} className="w-6 h-6 rounded-full bg-[#ff5470]/20 border border-[#ff5470]/30 text-[10px]">🚫</button></div>}
                     </div>
                   </div>
                 )})}
-
-              {showEmojiPicker && <div className="p-3 border-t border-[#2a323d] bg-[#0e1116] flex gap-2 flex-wrap max-h-[120px] overflow-y-auto">
-                {EMOJIS.map(em=><button key={em} onClick={()=>{setNewChat(prev=>prev+em); setShowEmojiPicker(false)}} className="w-9 h-9 rounded-lg bg-[#1d242e] border border-[#2a323d] hover:bg-[#7c5cff]/20 text-lg">{em}</button>)}
-                <button onClick={()=>setShowEmojiPicker(false)} className="w-9 h-9 rounded-lg bg-red-500/20 border border-red-500/30 text-xs">✕</button>
-              </div>}
-              <div className="p-4 border-t border-[#2a323d] flex gap-2 items-center">
-                <button onClick={()=>setShowEmojiPicker(!showEmojiPicker)} className="w-11 h-11 rounded-xl bg-[#1d242e] border border-[#2a323d] text-xl hover:bg-[#7c5cff]/20">😀</button>
-                <input value={newChat} onChange={e=>setNewChat(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleChatSend()} placeholder="Mensaje con emojis, moderado, gana puntos (max 10/día)" className="flex-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-                <button onClick={handleChatSend} className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold text-sm">Enviar</button>
+                {chatMsgs.length===0 && <div className="text-center py-12"><p className="text-4xl mb-3">💬</p><p className="text-[#8b97a8] text-sm">Chat Supabase Realtime - escribe el primer mensaje mundial</p><p className="text-[11px] text-[#8b97a8] mt-2">Requiere tabla chat_messages con Realtime habilitado</p></div>}
+                <div ref={chatEndRef} />
               </div>
-              {(profile?.chat_role==='moderador' || profile?.chat_role==='master') && <div className="px-4 pb-3 text-[11px] text-[#00d4b1] flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#00d4b1] animate-pulse" />🛡️ Eres moderador - puedes borrar mensajes, mutear y banear para evitar insultos/spam. Usa los botones 🗑️ 🔇 🚫 en cada mensaje.</div>}
+              {showEmojiPicker && <div className="p-3 border-t border-[#2a323d] bg-[#0e1116] flex gap-2 flex-wrap max-h-[120px] overflow-y-auto">{EMOJIS.map(em=><button key={em} onClick={()=>{setNewChat(prev=>prev+em); setShowEmojiPicker(false)}} className="w-9 h-9 rounded-lg bg-[#1d242e] border border-[#2a323d] hover:bg-[#7c5cff]/20 text-lg">{em}</button>)}<button onClick={()=>setShowEmojiPicker(false)} className="w-9 h-9 rounded-lg bg-red-500/20 border border-red-500/30 text-xs">✕</button></div>}
+              <div className="p-4 border-t border-[#2a323d] flex gap-2 items-center"><button onClick={()=>setShowEmojiPicker(!showEmojiPicker)} className="w-11 h-11 rounded-xl bg-[#1d242e] border border-[#2a323d] text-xl hover:bg-[#7c5cff]/20">😀</button><input value={newChat} onChange={e=>setNewChat(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleChatSend()} placeholder="Mensaje con emojis, moderado, gana puntos (max 10/día)" className="flex-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" /><button onClick={handleChatSend} className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-bold text-sm">Enviar</button></div>
+              {(profile?.chat_role==='moderador' || profile?.chat_role==='master') && <div className="px-4 pb-3 text-[11px] text-[#00d4b1] flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#00d4b1] animate-pulse" />🛡️ Eres moderador - puedes borrar, mutear y banear para evitar insultos/spam</div>}
             </div>
             <div className="rounded-[20px] bg-[#161b23] border border-[#2a323d] p-4 h-[75vh] overflow-y-auto">
-              <h3 className="font-bold mb-3">Conectados Realtime ({onlineProfiles.length})</h3>
+              <h3 className="font-bold mb-3"> Conectados Realtime ({onlineProfiles.length})</h3>
               <div className="space-y-2">
                 {profiles.map(pr=>{
                   const isOnline=onlineProfiles.some(o=>o.id===pr.id) || !!onlineUsers[pr.id]
@@ -632,7 +614,7 @@ export default function App(){
         {tab==='mensajes' && (
           <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-[75vh]">
             <div className="rounded-[20px] bg-[#161b23] border border-[#2a323d] p-3 overflow-y-auto">
-              <h3 className="font-bold mb-3">✉️Mensajeses - Supabase Realtime ({directMsgs.length})</h3>
+              <h3 className="font-bold mb-3">✉️ Mensajeses - Supabase Realtime ({directMsgs.length})</h3>
               <div className="space-y-1">
                 {profiles.filter(pr=>pr.id!==profile?.id).map(pr=>{
                   const msgs=directMsgs.filter(m=>(m.from_id===pr.id&&m.to_id===profile?.id)||(m.from_id===profile?.id&&m.to_id===pr.id))
@@ -687,39 +669,17 @@ export default function App(){
                   <p className="text-sm text-[#8b97a8] mt-3">{profile.bio||'Miembro de la comunidad'}</p>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                     <div className="p-2.5 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-[#8b97a8] text-[10px]">Email</p><p className="font-bold truncate">{profile.email}</p></div>
-                    <div className="p-2.5 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-[#8b97a8] text-[10px]">Puntos</p><p className="font-bold">{profile.points} pts • {getRank(profile.points).name}</p></div>
+                    <div className="p-2.5 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-[#8b97a8] text-[10px]">Puntos</p><p className="font-bold">{profile.points} pts</p></div>
                     <div className="p-2.5 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-[#8b97a8] text-[10px]">Miembro desde</p><p className="font-bold">{new Date(profile.created_at).toLocaleDateString()}</p></div>
-                    <div className="p-2.5 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-[#8b97a8] text-[10px]">Rol chat</p><p className="font-bold">{profile.chat_role} {profile.chat_role==='moderador'?'🛡️':profile.chat_role==='master'?'👑':''}</p></div>
+                    <div className="p-2.5 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-[#8b97a8] text-[10px]">Rol chat</p><p className="font-bold">{profile.chat_role}</p></div>
                   </div>
-                  <div className="mt-3 text-[11px] text-[#8b97a8] p-2.5 rounded-xl bg-[#0e1116] border border-[#2a323d]">💡 Límite: 10 pts/día • Novato 0-99, Colaborador 100-499, Veterano 500-999, Maestro 1000+ • Moderadores y Master sin límite</div>
                   <div className="mt-4 flex gap-2 flex-wrap">
                     <div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs"><b>{profile.points}</b> pts</div>
                     <div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{posts.filter(p=>p.author_id===profile.id).length} posts</div>
                     <div className="px-3 py-1.5 rounded-full bg-[#1d242e] border border-[#2a323d] text-xs">{products.filter(p=>p.seller_id===profile.id).length} productos</div>
-                    <button onClick={()=>{ const newBio=prompt('Nueva bio', profile.bio||''); if(newBio!==null){ supabase.from('profiles').update({bio:newBio}).eq('id', profile.id); setProfile({...profile, bio:newBio} as any) } }} className="px-3 py-1.5 rounded-full bg-[#7c5cff]/20 border border-[#7c5cff]/30 text-xs font-bold text-[#a78bfa]">✏️ Editar bio</button>
+                    <button onClick={()=>{ const newBio=prompt('Nueva bio', profile.bio||''); if(newBio!==null){ supabase.from('profiles').update({bio:newBio}).eq('id', profile.id); setProfile({...profile, bio:newBio} as any) } }} className="px-3 py-1.5 rounded-full bg-[#7c5cff]/20 border border-[#7c5cff]/30 text-xs font-bold text-[#a78bfa]">Editar bio</button>
                   </div>
-                  {profile?.chat_role==='master' && <div className="mt-4 flex gap-2"><button onClick={()=>setShowMaster(true)} className="px-5 py-2.5 rounded-xl bg-[#ffb020] text-black font-black text-sm hover:bg-[#ffb020]/80">👑 Abrir Panel Maestro Ghost</button><span className="text-[11px] text-[#8b97a8] py-2.5">Ctrl+Shift+A o 5 clicks en ◈</span></div>}
-                </div>
-              </div>
-            </div>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="p-5 rounded-[20px] bg-[#161b23] border border-[#2a323d]">
-                <h3 className="font-bold mb-3">📝 Mis posts recientes</h3>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {posts.filter(p=>p.author_id===profile.id).slice(0,5).map(p=><div key={p.id} className="p-3 rounded-xl bg-[#0e1116] border border-[#2a323d]"><p className="text-xs line-clamp-2">{p.text}</p><p className="text-[10px] text-[#8b97a8] mt-1">{new Date(p.created_at).toLocaleDateString()} • {p.likes?.length||0} likes</p></div>)}
-                  {posts.filter(p=>p.author_id===profile.id).length===0 && <p className="text-xs text-[#8b97a8]">Sin posts aún</p>}
-                </div>
-              </div>
-              <div className="p-5 rounded-[20px] bg-[#161b23] border border-[#2a323d]">
-                <h3 className="font-bold mb-3">⚙️ Configuración</h3>
-                <div className="space-y-2">
-                  <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} className="w-full p-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-xs flex justify-between"><span>Tema</span><span>{theme==='dark'?'🌙 Oscuro':'☀️ Claro'}</span></button>
-                  <button onClick={handleLogout} className="w-full p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 font-bold">Cerrar sesión</button>
-                </div>
-                <div className="mt-4 p-3 rounded-xl bg-[#0e1116] border border-[#2a323d]">
-                  <p className="text-[11px] font-bold mb-1">Progreso de rango</p>
-                  <div className="w-full h-2 rounded-full bg-[#1d242e] overflow-hidden"><div className="h-full bg-gradient-to-r from-[#7c5cff] to-[#a78bfa]" style={{width:`${Math.min(100, (profile.points % 100))}%`}} /></div>
-                  <p className="text-[10px] text-[#8b97a8] mt-1">{profile.points} pts • Siguiente: {RANKS.find(r=>r.min>profile.points)?.name||'Maestro máximo'} ({RANKS.find(r=>r.min>profile.points)?.min||1000} pts)</p>
+                  {profile?.chat_role==='master' && <div className="mt-4 flex gap-2"><button onClick={()=>setShowMaster(true)} className="px-5 py-2.5 rounded-xl bg-[#ffb020] text-black font-black text-sm">Panel Maestro Ghost</button></div>}
                 </div>
               </div>
             </div>
@@ -730,7 +690,7 @@ export default function App(){
           <div className="max-w-3xl mx-auto space-y-4">
             <h1 className="text-2xl font-black">Carrito ({cart.length})</h1>
             {cart.map(c=><div key={c.product.id} className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d] flex justify-between"><div className="flex gap-3"><img src={c.product.images?.[0]?.url} className="w-16 h-16 rounded-lg object-cover bg-[#0e1116]" alt="" /><div><p className="font-bold text-sm">{c.product.title}</p><p className="text-xs text-[#8b97a8]">x{c.qty} • ${c.product.price} COP • {c.product.seller?.username}</p></div></div><button onClick={()=>setCart(cart.filter(x=>x.product.id!==c.product.id))} className="text-xs px-3 py-1.5 rounded-lg bg-[#1d242e] border border-[#2a323d]">Quitar</button></div>)}
-            {cart.length>0 ? <><div className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d]"><p className="flex justify-between font-bold text-lg">Total: <span className="text-[#00d4b1]">${cart.reduce((s,c)=>s+c.product.price*c.qty,0).toLocaleString()} COP</span></p><p className="text-[11px] text-[#8b97a8] mt-2">Checkout envía mensaje automático al vendedor vía Supabase direct_messages para pago directo entre países. Funciona mundial.</p><p className="text-[11px] text-[#00d4b1] mt-1">✓ {cart.length} productos de todo el mundo listos para checkout</p></div><button onClick={handleCheckout} className="w-full py-4 rounded-xl bg-gradient-to-r from-[#00d4b1] to-[#7c5cff] text-white font-black text-lg shadow-lg hover:scale-[1.01] transition">🛒✅ Checkout - Pagar y Notificar Vendedores Mundial</button><p className="text-[11px] text-[#8b97a8] text-center mt-2">Al pagar se crea mensaje automático al vendedor con tus datos para coordinar pago directo</p></> : <div className="p-12 rounded-[20px] bg-[#161b23] border border-[#2a323d] text-center"><p className="text-4xl mb-3">🎒</p><p className="text-[#8b97a8]">Carrito vacío - Agrega productos de la Tienda</p><button onClick={()=>setTab('tienda')} className="mt-4 px-5 py-2.5 rounded-xl bg-[#7c5cff] text-white font-bold text-sm">Ir a Tienda</button></div>}
+            {cart.length>0 ? <><div className="p-4 rounded-xl bg-[#161b23] border border-[#2a323d]"><p className="flex justify-between font-bold">Total: <span className="text-[#00d4b1]">${cart.reduce((s,c)=>s+c.product.price*c.qty,0).toLocaleString()} COP</span></p><p className="text-[11px] text-[#8b97a8] mt-2">Checkout envía mensaje automático al vendedor vía Supabase direct_messages para pago directo entre países</p></div><button onClick={handleCheckout} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] text-white font-black">Checkout - Notificar vendedores mundial</button></> : <div className="p-12 rounded-[20px] bg-[#161b23] border border-[#2a323d] text-center"><p className="text-4xl mb-3">🎒</p><p className="text-[#8b97a8]">Carrito vacío</p></div>}
           </div>
         )}
       </main>
@@ -776,14 +736,9 @@ export default function App(){
                       <div key={u.id} className="flex items-center justify-between p-3 rounded-xl bg-[#0e1116] border border-[#2a323d]">
                         <div className="flex items-center gap-3"><div className="relative"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{background:u.avatar_color}}>{u.username[0].toUpperCase()}</div>{isOnline && <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#00d4b1] border-2 border-[#0e1116] animate-pulse" />}</div><div><p className="text-sm font-bold">{u.username} {isOnline&&'🟢 online'} {u.banned&&'(BANEADO)'} {u.muted&&'(MUTEADO)'}</p><p className="text-[11px] text-[#8b97a8]">{u.chat_role} • {u.points} pts • {u.email} • {u.last_seen?new Date(u.last_seen).toLocaleTimeString():'sin last_seen'}</p></div></div>
                         <div className="flex gap-1 flex-wrap">
-                          <span className="px-2 py-1 rounded bg-[#1d242e] border border-[#2a323d] text-[10px] font-bold" style={{color:getRank(u.points).color}}>{getRank(u.points).name}</span>
-                          <button onClick={async()=>{ await supabase.from('profiles').update({points:u.points+100}).eq('id', u.id) }} className="px-2 py-1 rounded bg-[#7c5cff] text-white text-[10px]">+100</button>
+                          <span className="px-2 py-1 rounded bg-[#1d242e] border border-[#2a323d] text-[10px] font-bold" style={{color:getRank(u.points).color}}>{getRank(u.points).name}</span><button onClick={async()=>{ await supabase.from('profiles').update({points:u.points+100}).eq('id', u.id) }} className="px-2 py-1 rounded bg-[#7c5cff] text-white text-[10px]">+100</button>
                           <button onClick={async()=>{ await supabase.from('profiles').update({points:Math.max(0,u.points-100)}).eq('id', u.id) }} className="px-2 py-1 rounded bg-[#1d242e] border border-[#2a323d] text-[10px]">-100</button>
-                          <div className="flex gap-1 flex-wrap">
-                            <span className="text-[10px] text-[#8b97a8] py-1">Rango:</span>
-                            {CHAT_ROLES.map(role=><button key={role} onClick={async()=>{ await supabase.from('profiles').update({chat_role:role}).eq('id', u.id) }} className={`px-2 py-1 rounded text-[10px] font-bold ${u.chat_role===role?'bg-[#7c5cff] text-white':'bg-[#1d242e] border border-[#2a323d] text-[#8b97a8]'}`}>{role}</button>)}
-                          </div>
-                          <button onClick={async()=>{ await supabase.from('profiles').update({banned:!u.banned}).eq('id', u.id) }} className="px-2 py-1 rounded bg-[#ffb020]/20 text-[#ffb020] text-[10px]">{u.banned?'Unban':'Ban'}</button>
+                          <div className="flex gap-1 flex-wrap"><span className="text-[10px] text-[#8b97a8] py-1">Rango:</span>{CHAT_ROLES.map(role=><button key={role} onClick={async()=>{ await supabase.from('profiles').update({chat_role:role}).eq('id', u.id) }} className={`px-2 py-1 rounded text-[10px] font-bold ${u.chat_role===role?'bg-[#7c5cff] text-white':'bg-[#1d242e] border border-[#2a323d] text-[#8b97a8]'}`}>{role}</button>)}</div><button onClick={async()=>{ await supabase.from('profiles').update({banned:!u.banned}).eq('id', u.id) }} className="px-2 py-1 rounded bg-[#ffb020]/20 text-[#ffb020] text-[10px]">{u.banned?'Unban':'Ban'}</button>
                           <button onClick={async()=>{ await supabase.from('profiles').update({muted:!u.muted}).eq('id', u.id) }} className="px-2 py-1 rounded bg-[#00d4b1]/20 text-[#00d4b1] text-[10px]">{u.muted?'Unmute':'Mute'}</button>
                           <button onClick={()=>{ setEditUserModal(u); setEditEmail(u.email||'') }} className="px-2 py-1 rounded bg-[#3b82f6]/20 text-[#3b82f6] text-[10px]">Editar email/pass</button>
                           <button onClick={async()=>{ if(confirm('Borrar definitivo '+u.username+'? Borra perfil, posts, productos, chat, mensajes mundial')){ await supabase.from('profiles').delete().eq('id', u.id); await supabase.from('posts').delete().eq('author_id', u.id); await supabase.from('products').delete().eq('seller_id', u.id); await supabase.from('chat_messages').delete().eq('user_id', u.id); await supabase.from('direct_messages').delete().or(`from_id.eq.${u.id},to_id.eq.${u.id}`) } }} className="px-2 py-1 rounded bg-red-500/20 text-red-400 text-[10px]">Borrar definitivo</button>
