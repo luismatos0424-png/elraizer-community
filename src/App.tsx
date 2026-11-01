@@ -35,8 +35,9 @@ export default function App(){
   const [cart,setCart]=useState<{product:Product, qty:number}[]>([])
   const [showMaster,setShowMaster]=useState(false)
   const [logoClicks,setLogoClicks]=useState(0)
-  const [theme,setTheme]=useState('dark')
+  const [theme,setTheme]=useState<'dark'|'light'>('dark')
   const [obUsername,setObUsername]=useState('')
+  const [loading,setLoading]=useState(true)
   const [obColor,setObColor]=useState(COLORS[0])
   const [obBio,setObBio]=useState('')
   const [showEmojiPicker,setShowEmojiPicker]=useState(false)
@@ -96,23 +97,53 @@ export default function App(){
     return ()=>{ supabase.removeChannel(ch1); supabase.removeChannel(presence) }
   },[profile])
 
+  const [authPass,setAuthPass]=useState('')
+  const [authLoading,setAuthLoading]=useState(false)
+  const [authMode,setAuthMode]=useState<'login'|'register'>('login')
+
   const handleAuth=async(isLogin:boolean)=>{
-    const email=editEmail.trim()
-    const pass=(document.getElementById('pass') as HTMLInputElement)?.value
-    if(!email||!pass){ alert('Email y contraseña'); return }
-    if(isLogin){
-      const {error}=await supabase.auth.signInWithPassword({email, password:pass})
-      if(error) alert(error.message)
-    } else {
-      if(!obUsername.trim()){ alert('Username'); return }
-      const {data,error}=await supabase.auth.signUp({email, password:pass})
-      if(error){ alert(error.message); return }
-      if(data.user){
-        const isMaster=email.toLowerCase()==='ext3@elraizer.com'
-        await supabase.from('profiles').upsert({id:data.user.id, username:isMaster?MASTER_USER:obUsername, avatar_color:isMaster?'#ffb020':obColor, bio:obBio, role:isMaster?'admin':'user', chat_role:isMaster?'master':'nuevo', points:isMaster?999:0, email}, {onConflict:'id'})
-        alert('Cuenta creada, ya puedes entrar')
+    const email=editEmail.trim().toLowerCase()
+    const pass=authPass.trim()
+    if(!email||!pass){ alert('❌ Email y contraseña requeridos'); return }
+    if(!email.includes('@')){ alert('❌ Email inválido'); return }
+    if(pass.length<6){ alert('❌ Contraseña mínimo 6 caracteres'); return }
+    setAuthLoading(true)
+    try{
+      if(isLogin){
+        const {data,error}=await supabase.auth.signInWithPassword({email, password:pass})
+        if(error){ alert('❌ '+error.message); return }
+        if(data.user){
+          const {data:existing}=await supabase.from('profiles').select('*').eq('id', data.user.id).single()
+          if(existing){
+            let profToSet = existing as any
+            if(data.user.email?.toLowerCase()==='ext3@elraizer.com' && profToSet.chat_role!=='master'){
+              const {data:upgraded}=await supabase.from('profiles').update({role:'admin', chat_role:'master', points:999, username:'EXT3', avatar_color:'#ffb020'}).eq('id', data.user.id).select().single()
+              if(upgraded) profToSet = upgraded as any
+            }
+            setProfile(profToSet)
+            setAuthUser(data.user)
+          }
+        }
+      } else {
+        if(!obUsername.trim()){ alert('❌ Username requerido'); setAuthLoading(false); return }
+        if(obUsername.length<3){ alert('❌ Username mínimo 3 letras'); setAuthLoading(false); return }
+        const {data,error}=await supabase.auth.signUp({email, password:pass})
+        if(error){ alert('❌ '+error.message); setAuthLoading(false); return }
+        if(data.user){
+          const isMaster=email.toLowerCase()==='ext3@elraizer.com'
+          const {error:profError}=await supabase.from('profiles').upsert({id:data.user.id, username:isMaster?MASTER_USER:obUsername.trim(), avatar_color:isMaster?'#ffb020':obColor, bio:obBio.trim()||'Miembro comunidad', role:isMaster?'admin':'user', chat_role:isMaster?'master':'nuevo', points:isMaster?999:0, email}, {onConflict:'id'})
+          if(profError){ alert('❌ Error perfil: '+profError.message); } else { alert('✅ Cuenta creada para '+obUsername+' - Iniciando sesión...') }
+          // Auto login after signup
+          const {data:loginData}=await supabase.auth.signInWithPassword({email, password:pass})
+          if(loginData.user){
+            const {data:newProf}=await supabase.from('profiles').select('*').eq('id', loginData.user.id).single()
+            if(newProf){ setProfile(newProf as any); setAuthUser(loginData.user) }
+          }
+        } else {
+          alert('✅ Revisa tu email para confirmar (si confirmación está activa)')
+        }
       }
-    }
+    }catch(e:any){ alert('❌ Error: '+(e.message||e)) } finally { setAuthLoading(false) }
   }
 
   const handleLogout=async()=>{ await supabase.auth.signOut(); setProfile(null); setAuthUser(null) }
@@ -207,18 +238,20 @@ export default function App(){
   if(!authUser){
     return (
       <div className="min-h-screen bg-[#0e1116] text-white flex items-center justify-center p-4">
-        <div className="w-full max-w-md p-8 rounded-[24px] bg-[#161b23] border border-[#2a323d]">
-          <div className="text-center mb-6"><h1 className="text-3xl font-black">◈ Elraizer</h1><p className="text-sm text-[#8b97a8] mt-2">Comunidad Spa</p></div>
+        <div className="w-full max-w-md p-8 rounded-[24px] bg-[#161b23] border border-[#2a323d] shadow-2xl">
+          <div className="text-center mb-8"><div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] flex items-center justify-center text-2xl font-black mb-4">◈</div><h1 className="text-3xl font-black">Elraizer</h1><p className="text-sm text-[#8b97a8] mt-2">Comunidad Spa • Chat • Tienda • Mensajería</p><div className="mt-3 flex justify-center gap-2"><span className="px-2 py-1 rounded-full bg-[#00d4b1]/20 text-[#00d4b1] text-[10px]">Realtime</span><span className="px-2 py-1 rounded-full bg-[#7c5cff]/20 text-[#a78bfa] text-[10px]">Supabase</span></div></div>
+          <div className="flex gap-2 mb-6 p-1 rounded-xl bg-[#0e1116] border border-[#2a323d]"><button onClick={()=>setAuthMode('login')} className={`flex-1 py-2.5 rounded-lg font-bold text-sm ${authMode==='login'?'bg-[#7c5cff] text-white':'text-[#8b97a8]'}`}>Entrar</button><button onClick={()=>setAuthMode('register')} className={`flex-1 py-2.5 rounded-lg font-bold text-sm ${authMode==='register'?'bg-[#7c5cff] text-white':'text-[#8b97a8]'}`}>Crear cuenta</button></div>
           <div className="space-y-4">
-            <input value={editEmail} onChange={e=>setEditEmail(e.target.value)} placeholder="Email" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-            <input id="pass" type="password" placeholder="Contraseña" className="w-full px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" />
-            <div className="p-4 rounded-xl bg-[#0e1116] border border-[#2a323d] space-y-3">
-              <p className="text-xs font-bold text-[#8b97a8]">Solo registro:</p>
-              <input value={obUsername} onChange={e=>setObUsername(e.target.value)} placeholder="Username" className="w-full px-3 py-2 rounded-lg bg-[#161b23] border border-[#2a323d] text-xs" />
-              <div className="flex gap-2">{COLORS.map(c=><button key={c} onClick={()=>setObColor(c)} className={`w-6 h-6 rounded-full border-2 ${obColor===c?'border-white':'border-transparent'}`} style={{background:c}} />)}</div>
-              <input value={obBio} onChange={e=>setObBio(e.target.value)} placeholder="Bio corta" className="w-full px-3 py-2 rounded-lg bg-[#161b23] border border-[#2a323d] text-xs" />
-            </div>
-            <div className="grid grid-cols-2 gap-3"><button onClick={()=>handleAuth(true)} className="py-3 rounded-xl bg-[#1d242e] border border-[#2a323d] font-bold text-sm">Entrar</button><button onClick={()=>handleAuth(false)} className="py-3 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] font-bold text-sm">Crear cuenta</button></div>
+            <div><label className="text-[11px] text-[#8b97a8] font-bold">Email</label><input value={editEmail} onChange={e=>setEditEmail(e.target.value)} placeholder="tu@email.com" type="email" className="w-full mt-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" /></div>
+            <div><label className="text-[11px] text-[#8b97a8] font-bold">Contraseña (min 6)</label><input value={authPass} onChange={e=>setAuthPass(e.target.value)} placeholder="••••••••" type="password" className="w-full mt-1 px-4 py-3 rounded-xl bg-[#0e1116] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" /></div>
+            {authMode==='register' && <div className="p-4 rounded-xl bg-[#0e1116] border border-[#2a323d] space-y-3 animate-in">
+              <p className="text-xs font-bold text-[#a78bfa]">Datos de registro:</p>
+              <div><label className="text-[10px] text-[#8b97a8]">Username (min 3 letras)</label><input value={obUsername} onChange={e=>setObUsername(e.target.value)} placeholder="Tu nombre" className="w-full mt-1 px-3 py-2.5 rounded-lg bg-[#161b23] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" /></div>
+              <div><label className="text-[10px] text-[#8b97a8]">Color avatar</label><div className="flex gap-2 mt-1">{COLORS.map(c=><button key={c} onClick={()=>setObColor(c)} className={`w-8 h-8 rounded-full border-2 transition ${obColor===c?'border-white scale-110':'border-transparent'}`} style={{background:c}} />)}</div></div>
+              <div><label className="text-[10px] text-[#8b97a8]">Bio corta</label><input value={obBio} onChange={e=>setObBio(e.target.value)} placeholder="Me gusta..." className="w-full mt-1 px-3 py-2.5 rounded-lg bg-[#161b23] border border-[#2a323d] text-sm outline-none focus:border-[#7c5cff]" /></div>
+            </div>}
+            <button onClick={()=>handleAuth(authMode==='login')} disabled={authLoading} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#a78bfa] font-black text-sm disabled:opacity-50 disabled:cursor-not-allowed">{authLoading?'⏳ Cargando...':authMode==='login'?'🚀 Entrar a Elraizer':'✨ Crear cuenta y entrar'}</button>
+            <div className="text-center text-[11px] text-[#8b97a8] space-y-1"><p>Maestro: Ext3@elraizer.com / Elraizer5374e*</p><p className="text-[10px]">Al entrar aceptas normas: sin spam/insultos - moderadores activos 🛡️</p></div>
           </div>
         </div>
       </div>
